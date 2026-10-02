@@ -349,6 +349,53 @@
     .progress-log { list-style: none; padding: 0; margin: 0 0 8px; font-size: 0.85rem; color: var(--muted); max-height: 140px; overflow-y: auto; }
     .progress-log li { padding: 2px 0; border-bottom: 1px dashed var(--line); }
 
+    /* Cover */
+    .book-head { display: flex; gap: 12px; align-items: flex-start; }
+    .book-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+    .cover-thumb { width: 56px; height: auto; max-height: 86px; object-fit: cover; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); flex: 0 0 auto; }
+    .cover-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+    .cover-preview { width: 72px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+    .cover-actions { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+    .cover-actions .checks-label { flex-basis: 100%; }
+    .cover-actions .field-hint { flex-basis: 100%; }
+    .file-btn { display: inline-flex; align-items: center; }
+    .input-with-btn { display: flex; gap: 8px; }
+    .input-with-btn input { flex: 1; min-width: 0; }
+    .input-with-btn .btn { flex: 0 0 auto; font-size: 0.9rem; }
+
+    /* Metadaten-Vorschläge */
+    .enrich-errors { margin: 0 0 8px; padding-left: 18px; color: var(--danger); font-size: 0.85rem; }
+    .enrich-note { background: #fbf1dc; border: 1px solid #ecd9ae; border-radius: 10px; padding: 8px 10px; font-size: 0.9rem; margin-bottom: 10px; }
+    .edition-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+    .edition-option {
+      display: flex; gap: 10px; width: 100%; text-align: left; font: inherit; color: inherit;
+      background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px; cursor: pointer;
+    }
+    .edition-option:hover, .edition-option:focus { border-color: var(--accent); }
+    .edition-option img, .edition-option .no-cover { width: 48px; min-height: 64px; border-radius: 3px; flex: 0 0 auto; object-fit: cover; background: var(--bg); }
+    .edition-option .eo-text { display: flex; flex-direction: column; gap: 2px; font-size: 0.9rem; min-width: 0; }
+    .edition-option strong { font-family: var(--serif); font-size: 1rem; }
+    .eo-match { color: var(--st-reading); font-size: 0.8rem; }
+    .badge-uncertain { background: #b5832a; color: #fff; border-radius: 999px; padding: 1px 8px; font-size: 0.75rem; align-self: flex-start; }
+    .btn-link { background: none; border: none; color: var(--accent); font: inherit; cursor: pointer; padding: 4px 0; margin-bottom: 6px; }
+    .edition-summary { font-size: 0.9rem; margin-bottom: 6px; display: flex; gap: 10px; align-items: flex-start; }
+    .edition-summary img { width: 56px; border-radius: 3px; }
+    .field-table { display: grid; gap: 6px; }
+    .field-row-check { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: #fff; }
+    .field-row-check input { width: 20px; height: 20px; margin-top: 2px; }
+    .frc-label { font-size: 0.8rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+    .frc-value { overflow-wrap: anywhere; font-size: 0.95rem; }
+    .frc-value.long { max-height: 6.5em; overflow: hidden; }
+    .frc-current { font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
+    .status-tag { border-radius: 6px; padding: 0 6px; font-size: 0.75rem; }
+    .status-neu { background: #e3efe0; color: #2f5a27; }
+    .status-abweichend { background: #f6e1d6; color: #8a3a22; }
+    .status-identisch { background: var(--bg); color: var(--muted); }
+    .field-spaced { margin-top: 10px; }
+    .check-line { display: flex; gap: 8px; align-items: center; margin: 4px 0 10px; }
+    .check-line input { width: auto; }
+    .source-note { font-size: 0.75rem; color: var(--muted); }
+
     /* Teilkriterien und Gewichte */
     .criteria, .weights { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
     .weights { margin-bottom: 12px; }
@@ -455,7 +502,10 @@
 
       <div class="field">
         <label for="fIsbn">ISBN <span class="hint-inline">(vom Einband oder Impressum)</span></label>
-        <input id="fIsbn" type="text" inputmode="numeric" autocomplete="off" placeholder="z. B. 978-3-…">
+        <div class="input-with-btn">
+          <input id="fIsbn" type="text" inputmode="numeric" autocomplete="off" placeholder="z. B. 978-3-…">
+          <button type="button" class="btn" id="enrichBtn" title="Fehlende Angaben online suchen">Metadaten suchen</button>
+        </div>
         <p class="field-hint" id="fIsbnHint"></p>
       </div>
 
@@ -467,6 +517,16 @@
       <div class="field">
         <label for="fAuthor">Autor:in <span class="hint-inline">(mehrere mit ; trennen)</span></label>
         <input id="fAuthor" name="author" type="text" autocomplete="off">
+      </div>
+
+      <div class="cover-row">
+        <img id="coverPreview" class="cover-preview" alt="" hidden>
+        <div class="cover-actions">
+          <span class="checks-label">Cover dieser Ausgabe</span>
+          <label class="btn file-btn">Bild wählen<input type="file" id="coverFile" accept="image/*" hidden></label>
+          <button type="button" class="btn" id="coverRemoveBtn" hidden>Entfernen</button>
+          <p class="field-hint" id="coverHint"></p>
+        </div>
       </div>
 
       <div class="field-row">
@@ -537,6 +597,7 @@
         <div class="section-body" id="specialFields"></div>
       </details>
 
+      <p class="field-hint" id="formNote" role="status"></p>
       <p class="error" id="formError" role="alert"></p>
 
       <div class="dialog-actions">
@@ -544,6 +605,29 @@
         <button type="submit" class="btn btn-primary" id="saveBtn">Speichern</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Metadaten-Vorschläge: erst Ausgabe wählen (bei mehreren Treffern), dann Felder übernehmen -->
+  <dialog id="enrichDialog" aria-labelledby="enrichTitle">
+    <div class="dialog-form">
+      <h2 id="enrichTitle">Metadaten-Vorschläge</h2>
+      <p class="field-hint" id="enrichStatus" role="status"></p>
+      <ul class="enrich-errors" id="enrichErrors"></ul>
+      <div id="enrichSpecial" class="enrich-note" hidden></div>
+      <ul class="edition-list" id="editionList" aria-label="Gefundene Ausgaben"></ul>
+      <div id="fieldView" hidden>
+        <button type="button" class="btn-link" id="backToEditions">← andere Ausgabe wählen</button>
+        <div class="edition-summary" id="editionSummary"></div>
+        <p class="field-hint">Neu = bei dir noch leer (vorausgewählt) · abweichend = anders als deine Angabe
+          (nur mit Haken übernommen) · identisch = schon gleich.</p>
+        <div class="field-table" id="fieldTable"></div>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="enrichCancelBtn">Abbrechen</button>
+        <button type="button" class="btn" id="enrichAllBtn" hidden>Alle übernehmen</button>
+        <button type="button" class="btn btn-primary" id="enrichApplyBtn" hidden>Auswahl übernehmen</button>
+      </div>
+    </div>
   </dialog>
 
   <!-- Fortschritt eintragen (schnell, auch unterwegs) -->
@@ -600,6 +684,19 @@
       <div class="weights" id="weightFields"></div>
       <button type="button" class="btn" id="resetWeightsBtn">Standard wiederherstellen</button>
 
+      <h3 class="settings-head">Metadaten-Suche</h3>
+      <div class="checks" id="sourceChecks">
+        <label><input type="checkbox" value="dnb"> Deutsche Nationalbibliothek</label>
+        <label><input type="checkbox" value="googlebooks"> Google Books</label>
+        <label><input type="checkbox" value="openlibrary"> Open Library</label>
+      </div>
+      <div class="field field-spaced">
+        <label for="googleKey">Google-Books-API-Key (optional, bleibt nur in diesem Browser)</label>
+        <input id="googleKey" type="text" autocomplete="off" spellcheck="false">
+      </div>
+      <label class="check-line"><input type="checkbox" id="autoEnrich"> Beim Speichern einer neuen ISBN automatisch suchen</label>
+      <button type="button" class="btn" id="clearCacheBtn">Zwischenspeicher leeren</button>
+
       <div class="dialog-actions">
         <button type="button" class="btn" id="settingsCancelBtn">Abbrechen</button>
         <button type="submit" class="btn btn-primary">Speichern</button>
@@ -619,6 +716,9 @@
   <script src="js/list.js"></script>
   <script src="js/score.js"></script>
   <script src="js/progress.js"></script>
+  <script src="js/sources.js"></script>
+  <script src="js/enrich.js"></script>
+  <script src="js/covers.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -1,0 +1,6 @@
+{"kind":"books#volumes","totalItems":1,"items":[{"id":"gKairos","volumeInfo":{
+  "title":"Kairos","subtitle":"Roman","authors":["Jenny Erpenbeck"],"publisher":"Penguin","publishedDate":"2021-08-30",
+  "description":"<p>Berlin, 1986: Eine junge Frau und ein älterer Mann.</p>",
+  "industryIdentifiers":[{"type":"ISBN_10","identifier":"3630877397"},{"type":"ISBN_13","identifier":"9783630877396"}],
+  "pageCount":416,"categories":["Fiction / Literary"],"language":"de",
+  "imageLinks":{"thumbnail":"http://books.google.com/books/content?id=gKairos&printsec=frontcover&img=1&zoom=1&edge=curl"}}}]}

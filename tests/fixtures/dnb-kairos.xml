@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<searchRetrieveResponse xmlns="http://www.loc.gov/zing/srw/">
+  <version>1.1</version>
+  <numberOfRecords>1</numberOfRecords>
+  <records>
+    <record>
+      <recordSchema>MARC21-xml</recordSchema>
+      <recordPacking>xml</recordPacking>
+      <recordData>
+        <record xmlns="http://www.loc.gov/MARC21/slim" type="Bibliographic">
+          <controlfield tag="001">1234567890</controlfield>
+          <datafield tag="020" ind1=" " ind2=" ">
+            <subfield code="a">9783630877396</subfield>
+            <subfield code="c">Festeinband : EUR 24.00 (DE)</subfield>
+            <subfield code="9">978-3-630-87739-6</subfield>
+          </datafield>
+          <datafield tag="041" ind1=" " ind2="7">
+            <subfield code="a">ger</subfield>
+          </datafield>
+          <datafield tag="100" ind1="1" ind2=" ">
+            <subfield code="a">Erpenbeck, Jenny</subfield>
+            <subfield code="4">aut</subfield>
+          </datafield>
+          <datafield tag="245" ind1="1" ind2="0">
+            <subfield code="a">Kairos</subfield>
+            <subfield code="b">Roman</subfield>
+            <subfield code="c">Jenny Erpenbeck</subfield>
+          </datafield>
+          <datafield tag="250" ind1=" " ind2=" ">
+            <subfield code="a">1. Auflage</subfield>
+          </datafield>
+          <datafield tag="264" ind1=" " ind2="1">
+            <subfield code="a">München</subfield>
+            <subfield code="b">Penguin Verlag</subfield>
+            <subfield code="c">[2021]</subfield>
+          </datafield>
+          <datafield tag="300" ind1=" " ind2=" ">
+            <subfield code="a">411 Seiten</subfield>
+          </datafield>
+          <datafield tag="655" ind1=" " ind2="7">
+            <subfield code="a">Roman</subfield>
+          </datafield>
+          <datafield tag="689" ind1="0" ind2="0">
+            <subfield code="a">Berlin &amp; DDR</subfield>
+          </datafield>
+        </record>
+      </recordData>
+    </record>
+  </records>
+</searchRetrieveResponse>

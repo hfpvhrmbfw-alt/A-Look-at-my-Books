@@ -6,6 +6,8 @@
      js/list.js  – Filtern, Sortieren, Warteschlange "Als Nächstes"
      js/score.js – Score aus Priorität und Teilkriterien
      js/progress.js – Lesefortschritt, Verlauf, Restdauer
+     js/sources.js, js/enrich.js – Metadaten-Quellen, Zusammenführen, Vorschläge
+     js/covers.js – Cover-Bilder lokal in IndexedDB (nur Browser)
    ==================================================================== */
 'use strict';
 
@@ -23,7 +25,15 @@ let activeGenre = '';        // '' oder ein Genre/Tag
 let minScore = null;         // null oder Mindestscore
 let editingId = null;        // ID des Eintrags im Bearbeiten-Dialog (null = neues Buch)
 let formRating = 0;          // Sterne im Formular (0 = keine): Priorität bzw. Bewertung nach dem Lesen
-let progressId = null;       // ID des Eintrags im Fortschritt-Dialog
+let progressId = null;
+let formProvenance = {};     // im Formular übernommene Vorschläge: 'work.title' -> { source, at, value }
+let pendingCover = null;     // neues Cover im Formular: { blob, source, at } oder 'remove'
+let enrichedInDialog = false; // wurde im offenen Formular schon gesucht?
+let enrichRun = 0;           // Zähler, damit veraltete Suchergebnisse ignoriert werden
+let enrichResult = null;     // letztes Suchergebnis (Ausgaben, Fehler …)
+let enrichRows = [];         // Feldzeilen der gewählten Ausgabe
+let enrichEdition = null;    // gewählte Ausgabe
+const coverBlobs = new Map(); // Cover-URL der Quelle -> heruntergeladenes Bild (Promise)       // ID des Eintrags im Fortschritt-Dialog
 let lastDeleted = null;      // für "Rückgängig" nach dem Löschen
 let toastTimer = null;
 
@@ -58,6 +68,21 @@ const els = {
   pPreview: $('pPreview'),
   progressLog: $('progressLog'),
   progressError: $('progressError'),
+  formNote: $('formNote'),
+  coverPreview: $('coverPreview'),
+  coverFile: $('coverFile'),
+  coverRemoveBtn: $('coverRemoveBtn'),
+  coverHint: $('coverHint'),
+  enrichDialog: $('enrichDialog'),
+  enrichStatus: $('enrichStatus'),
+  enrichErrors: $('enrichErrors'),
+  enrichSpecial: $('enrichSpecial'),
+  editionList: $('editionList'),
+  fieldView: $('fieldView'),
+  editionSummary: $('editionSummary'),
+  fieldTable: $('fieldTable'),
+  enrichAllBtn: $('enrichAllBtn'),
+  enrichApplyBtn: $('enrichApplyBtn'),
   total: $('totalCount'),
   dialog: $('bookDialog'),
   form: $('bookForm'),
@@ -292,14 +317,17 @@ function hasContent(values) {
 }
 
 /**
- * Übernimmt Werte in eine Entität. Nur tatsächlich geänderte Felder werden gesetzt
- * und als manuelle Angabe (mit Datum) vermerkt – das ist die Herkunft pro Feld.
+ * Übernimmt Werte in eine Entität. Nur tatsächlich geänderte Felder werden gesetzt und
+ * mit ihrer Herkunft vermerkt: 'manual', oder die Quelle eines im Formular übernommenen
+ * Vorschlags, solange der Wert danach nicht von Hand geändert wurde.
  */
-function assignManual(entity, values, at) {
+function assignManual(entity, values, at, scope) {
   for (const [key, value] of Object.entries(values)) {
     if (JSON.stringify(entity[key]) === JSON.stringify(value)) continue;
     entity[key] = value;
-    Model.setSource(entity, key, 'manual', at);
+    const prov = scope && formProvenance[`${scope}.${key}`];
+    if (prov && Enrich.sameValue(prov.value, value)) Model.setSource(entity, key, prov.source, prov.at);
+    else Model.setSource(entity, key, 'manual', at);
   }
 }
 
@@ -423,7 +451,7 @@ function applyForm(entry, data) {
   const at = new Date().toISOString();
   const work = Model.resolve(state, entry).work;
 
-  assignManual(work, Object.assign({ title: data.title, authors: data.authors }, data.work), at);
+  assignManual(work, Object.assign({ title: data.title, authors: data.authors }, data.work), at, 'work');
   assignManual(entry, {
     status: data.status,
     ownership: data.ownership,
@@ -444,15 +472,17 @@ function applyForm(entry, data) {
     const parsed = format === primary ? data.isbn : data.ebookIsbn;
     const values = Object.assign({}, data[format], { isbn10: parsed.isbn10, isbn13: parsed.isbn13 });
     const hasSpecial = format === primary && hasContent(data.special);
+    const hasCover = format === primary && pendingCover && pendingCover !== 'remove';
     let edition = editionFor(entry, format);
-    if (!edition && !hasContent(values) && !hasSpecial) continue;
+    if (!edition && !hasContent(values) && !hasSpecial && !hasCover) continue;
     if (format === primary) values.special = data.special;
     if (!edition) {
       edition = Model.createEdition({ workId: work.id, format });
       state.editions.push(edition);
     }
     if (values.special) values.special = Object.assign({}, edition.special, values.special);
-    assignManual(edition, values, at);
+    assignManual(edition, values, at, format === primary ? 'edition' : null);
+    if (format === primary) applyCover(work, edition, at);
     editionIds.push(edition.id);
   }
   // Ausgaben eines nicht mehr gewählten Formats bleiben beim Werk gespeichert,
@@ -461,6 +491,35 @@ function applyForm(entry, data) {
 
   // Gelesen: Fortschritt auf 100 %, Enddatum vorbelegt (das Datum im Formular hat Vorrang)
   if (data.status === 'read') Progress.markRead(entry.progress, totalPagesOf(entry), data.endDate);
+}
+
+/**
+ * Neues oder entferntes Cover aus dem Formular übernehmen: Bild in IndexedDB,
+ * Verweis an der Ausgabe (und am Werk, falls dieses noch keins hat).
+ */
+function applyCover(work, edition, at) {
+  if (!pendingCover) return;
+  if (pendingCover === 'remove') {
+    if (work.coverId === edition.coverId) work.coverId = null;
+    edition.coverId = null;
+    Model.setSource(edition, 'coverId', 'manual', at);
+    return;
+  }
+  const id = Model.newId();
+  const { blob, source } = pendingCover;
+  edition.coverId = id;
+  Model.setSource(edition, 'coverId', source, pendingCover.at || at);
+  if (!work.coverId) work.coverId = id;
+  Covers.put(id, blob).then(render).catch((err) => {
+    console.error('Cover konnte nicht gespeichert werden:', err);
+    showToast('Das Cover konnte nicht gespeichert werden.');
+  });
+}
+
+/** Cover-ID eines Buchs: die der Hauptausgabe, sonst die des Werks. */
+function coverIdOf(entry) {
+  const ed = editionFor(entry, primaryFormat(entry.ownership));
+  return (ed && ed.coverId) || Model.resolve(state, entry).work.coverId || null;
 }
 
 /** Legt ein neues Buch (Werk + Eintrag) an. */
@@ -695,12 +754,25 @@ function bookCard(book, inQueue = false) {
   li.dataset.status = book.status;
   li.dataset.id = book.id;
 
-  li.appendChild(el('h3', 'book-title', work.title));
-  if (work.subtitle) li.appendChild(el('p', 'book-sub', work.subtitle));
-  if (book.author) li.appendChild(el('p', 'book-author', book.author));
-  if (work.series) {
-    li.appendChild(el('p', 'book-sub', work.series + (work.seriesNumber ? `, Band ${work.seriesNumber}` : '')));
+  // Kopf: Cover (falls lokal gespeichert) und Titelangaben
+  const head = el('div', 'book-head');
+  const coverId = coverIdOf(entry);
+  if (coverId) {
+    const img = el('img', 'cover-thumb');
+    img.alt = '';
+    img.hidden = true;
+    Covers.url(coverId).then((u) => { if (u) { img.src = u; img.hidden = false; } });
+    head.appendChild(img);
   }
+  const text = el('div', 'book-head-text');
+  text.appendChild(el('h3', 'book-title', work.title));
+  if (work.subtitle) text.appendChild(el('p', 'book-sub', work.subtitle));
+  if (book.author) text.appendChild(el('p', 'book-author', book.author));
+  if (work.series) {
+    text.appendChild(el('p', 'book-sub', work.series + (work.seriesNumber ? `, Band ${work.seriesNumber}` : '')));
+  }
+  head.appendChild(text);
+  li.appendChild(head);
 
   const meta = el('div', 'book-meta');
   meta.appendChild(el('span', 'badge', STATUSES[book.status] || book.status));
@@ -939,6 +1011,12 @@ function openDialog(book = null) {
   $('secCriteria').open = Boolean(entry && Object.values(readCriteria()).some((v) => v != null));
 
   formRating = book ? book.rating : 0;
+  formProvenance = {};
+  pendingCover = null;
+  enrichedInDialog = false;
+  els.formNote.textContent = '';
+  els.coverHint.textContent = '';
+  paintCover(entry ? coverIdOf(entry) : null);
   els.error.textContent = '';
   paintStars();
   paintRatingLabel();
@@ -971,9 +1049,22 @@ function submitForm(event) {
     $('e-isbn').focus();
     return;
   }
+  // Nur eine ISBN eingetragen: erst die fehlenden Angaben suchen
+  const hasIsbn = Boolean(data.isbn.isbn13 || data.isbn.isbn10);
+  if (!data.title && hasIsbn && !enrichedInDialog) {
+    startEnrichment();
+    return;
+  }
   if (!data.title) {
-    els.error.textContent = 'Bitte einen Titel eintragen.';
+    els.error.textContent = hasIsbn
+      ? 'Bitte einen Titel eintragen (die Suche hat keinen übernommen).'
+      : 'Bitte einen Titel oder eine ISBN eintragen.';
     els.title.focus();
+    return;
+  }
+  // Optional: bei einer neuen ISBN vor dem Speichern automatisch suchen
+  if (state.settings.autoEnrichOnIsbn && hasIsbn && !enrichedInDialog && isNewIsbn(data.isbn)) {
+    startEnrichment();
     return;
   }
 
@@ -983,6 +1074,421 @@ function submitForm(event) {
   closeDialog();
   render();
 }
+
+/** Ist die ISBN im Formular neu (neues Buch oder geänderte ISBN)? */
+function isNewIsbn(parsed) {
+  if (!editingId) return true;
+  const entry = state.entries.find((e) => e.id === editingId);
+  const ed = entry && editionFor(entry, primaryFormat(entry.ownership));
+  return !ed || (ed.isbn13 || '') !== (parsed.isbn13 || '') || (ed.isbn10 || '') !== (parsed.isbn10 || '');
+}
+
+/* ====================================================================
+   Cover im Formular
+   ==================================================================== */
+
+/** Zeigt das Cover im Formular: neues (noch nicht gespeichertes) oder gespeichertes. */
+function paintCover(coverId) {
+  els.coverPreview.hidden = true;
+  els.coverRemoveBtn.hidden = true;
+  if (pendingCover && pendingCover !== 'remove') {
+    els.coverPreview.src = URL.createObjectURL(pendingCover.blob);
+    els.coverPreview.hidden = false;
+    els.coverRemoveBtn.hidden = false;
+    return;
+  }
+  if (pendingCover === 'remove' || !coverId) return;
+  Covers.url(coverId).then((u) => {
+    if (!u) return;
+    els.coverPreview.src = u;
+    els.coverPreview.hidden = false;
+    els.coverRemoveBtn.hidden = false;
+  });
+}
+
+/** Cover-ID des Buchs im offenen Formular (gespeicherter Stand). */
+function editingCoverId() {
+  const entry = editingId && state.entries.find((e) => e.id === editingId);
+  return entry ? coverIdOf(entry) : null;
+}
+
+els.coverFile.addEventListener('change', async () => {
+  const file = els.coverFile.files[0];
+  els.coverFile.value = '';
+  if (!file) return;
+  try {
+    pendingCover = { blob: await Covers.shrink(file), source: 'manual', at: new Date().toISOString() };
+    els.coverHint.textContent = 'Neues Cover wird beim Speichern übernommen.';
+  } catch (err) {
+    els.coverHint.textContent = 'Das Bild konnte nicht gelesen werden.';
+  }
+  paintCover(editingCoverId());
+});
+
+els.coverRemoveBtn.addEventListener('click', () => {
+  pendingCover = editingCoverId() ? 'remove' : null;
+  els.coverHint.textContent = pendingCover ? 'Cover wird beim Speichern entfernt.' : '';
+  paintCover(editingCoverId());
+});
+
+/* ====================================================================
+   Metadaten-Anreicherung (Vorschläge aus DNB, Google Books, Open Library)
+   ==================================================================== */
+
+/** Zwischenspeicher der Suchergebnisse im localStorage (älteste fliegen zuerst raus). */
+const lookupCache = {
+  key: 'buecher-tracker.cache',
+  read() {
+    try { return JSON.parse(localStorage.getItem(this.key)) || {}; } catch (err) { return {}; }
+  },
+  get(k) { return this.read()[k]; },
+  set(k, v) {
+    const data = this.read();
+    data[k] = v;
+    const keys = Object.keys(data);
+    if (keys.length > 150) {
+      keys.sort((a, b) => data[a].at - data[b].at).slice(0, keys.length - 150).forEach((x) => delete data[x]);
+    }
+    try {
+      localStorage.setItem(this.key, JSON.stringify(data));
+    } catch (err) {
+      // Speicher voll: Zwischenspeicher opfern, nie die Bücher
+      try { localStorage.removeItem(this.key); } catch (e) { /* egal */ }
+    }
+  },
+  clear() {
+    try { localStorage.removeItem(this.key); } catch (err) { /* egal */ }
+  },
+};
+
+/** Präfix der Formularfelder der Hauptausgabe ('p' = Print, 'e' = E-Book). */
+function primaryPrefix() {
+  return primaryFormat(els.ownership.value) === 'ebook' ? 'e' : 'p';
+}
+
+/** Aktuelle Formularwerte als { work, edition } für den Vergleich mit Vorschlägen. */
+function formCurrent() {
+  const prefix = primaryPrefix();
+  const edition = readFields(prefix, prefix === 'e' ? EBOOK_FIELDS : PRINT_FIELDS);
+  const isbn = Isbn.parse(els.isbn.value);
+  edition.isbn13 = isbn.valid ? isbn.isbn13 : '';
+  edition.isbn10 = isbn.valid ? isbn.isbn10 : '';
+  return {
+    work: Object.assign({
+      title: els.title.value.trim(),
+      authors: els.author.value.split(';').map((a) => a.trim()).filter(Boolean),
+    }, readFields('w', WORK_FIELDS)),
+    edition,
+  };
+}
+
+/** Schreibt einen übernommenen Wert ins Formular. Gibt den Abschnitt zurück, der ihn enthält. */
+function setFormValue(scope, field, value) {
+  const list = (v, sep) => (Array.isArray(v) ? v.join(sep) : v == null ? '' : String(v));
+  if (scope === 'work') {
+    if (field === 'title') { els.title.value = value; return null; }
+    if (field === 'authors') { els.author.value = list(value, '; '); return null; }
+    const spec = WORK_FIELDS.find((f) => f[0] === field);
+    if (!spec) return null;
+    $(`w-${field}`).value = list(value, spec[3] === ';' ? '; ' : ', ');
+    return 'secWork';
+  }
+  if (field === 'isbn13' || field === 'isbn10') {
+    // Die ISBN-13 hat Vorrang; die ISBN-10 nur, wenn noch gar keine ISBN eingetragen ist
+    if (field === 'isbn13' || !els.isbn.value.trim()) els.isbn.value = value;
+    showIsbnHint(els.isbn, els.isbnHint);
+    return null;
+  }
+  const prefix = primaryPrefix();
+  const specs = prefix === 'e' ? EBOOK_FIELDS : PRINT_FIELDS;
+  const spec = specs.find((f) => f[0] === field);
+  if (!spec) return null; // z. B. Einband bei E-Books
+  $(`${prefix}-${field}`).value = list(value, spec[3] === ';' ? '; ' : ', ');
+  return prefix === 'e' ? 'secEbook' : 'secPrint';
+}
+
+/** Startet die Suche mit den Angaben aus dem Formular und öffnet den Vorschlags-Dialog. */
+async function startEnrichment() {
+  const cur = formCurrent();
+  const isbn = Isbn.parse(els.isbn.value);
+  if (!isbn.valid) {
+    els.error.textContent = isbn.error;
+    els.isbn.focus();
+    return;
+  }
+  const special = readFields('s', SPECIAL_FIELDS);
+  const input = {
+    isbn: isbn.isbn13 || isbn.isbn10,
+    title: cur.work.title,
+    author: cur.work.authors[0] || '',
+    publisher: cur.edition.publisher,
+    year: cur.edition.year,
+    binding: cur.edition.binding,
+    language: cur.edition.language,
+    printing: cur.edition.printing,
+    publisherSeries: special.publisherSeries,
+    notes: special.notes,
+    kinds: special.kinds,
+  };
+  if (!input.isbn && !input.title && !input.author) {
+    els.error.textContent = 'Für die Suche bitte eine ISBN oder Titel und Autor:in eintragen.';
+    els.isbn.focus();
+    return;
+  }
+  const sources = Object.keys(Sources.LABELS).filter((s) => state.settings.sources[s] !== false);
+  if (!sources.length) {
+    els.error.textContent = 'Alle Quellen sind in den Einstellungen ausgeschaltet.';
+    return;
+  }
+  els.error.textContent = '';
+  enrichedInDialog = true;
+  const run = ++enrichRun;
+
+  els.enrichStatus.textContent = `Suche ${input.isbn ? 'nach ISBN' : 'nach Titel/Autor:in'} bei ${sources.map((s) => Sources.LABELS[s]).join(', ')} …`;
+  els.enrichErrors.innerHTML = '';
+  els.enrichSpecial.hidden = true;
+  els.editionList.innerHTML = '';
+  els.fieldView.hidden = true;
+  els.enrichAllBtn.hidden = true;
+  els.enrichApplyBtn.hidden = true;
+  els.enrichDialog.showModal();
+
+  let result;
+  try {
+    result = await Enrich.lookup(input, {
+      fetch: (url, opts) => window.fetch(url, opts),
+      cache: lookupCache,
+      sources,
+      apiKey: state.settings.googleApiKey,
+    });
+  } catch (err) {
+    console.error('Suche fehlgeschlagen:', err);
+    result = { editions: [], errors: [{ source: '', message: 'Die Suche ist fehlgeschlagen.' }], special: { special: false } };
+  }
+  if (run !== enrichRun || !els.enrichDialog.open) return; // inzwischen abgebrochen
+  enrichResult = result;
+
+  for (const e of result.errors) els.enrichErrors.appendChild(el('li', null, e.message));
+  if (result.special.special) {
+    els.enrichSpecial.hidden = false;
+    els.enrichSpecial.textContent = 'Das sieht nach einer besonderen oder älteren Ausgabe aus (' +
+      result.special.reasons.join(', ') + '). Es wurde zusätzlich gezielt nach Ausgabe-Details gesucht; ' +
+      'die Vorschläge sind weniger sicher und sollten mit dem Buch verglichen werden.';
+  }
+  if (!result.editions.length) {
+    els.enrichStatus.textContent = result.errors.length && result.errors.length >= sources.length
+      ? 'Keine Quelle war erreichbar. Du kannst das Buch trotzdem speichern und später erneut suchen.'
+      : 'Keine Treffer. Prüfe die Angaben oder versuche es mit Titel und Autor:in.';
+    return;
+  }
+  // Eindeutiger ISBN-Treffer: direkt die Felder zeigen; sonst Auswahlliste
+  const top = result.editions[0];
+  if (result.editions.length === 1 && top.match.reasons.includes('ISBN')) showEditionFields(0);
+  else showEditionList();
+}
+
+/** Text einer Ausgabe für Liste und Zusammenfassung. */
+function editionLines(ed) {
+  const v = (scope, field) => (ed[scope][field] ? ed[scope][field].value : null);
+  const authors = v('work', 'authors');
+  return {
+    title: [v('work', 'title'), v('work', 'subtitle')].filter(Boolean).join(': ') || '(ohne Titel)',
+    author: Array.isArray(authors) ? authors.join(', ') : '',
+    details: [
+      v('edition', 'publisher'), v('edition', 'year'), v('edition', 'binding'),
+      v('edition', 'printing'), v('edition', 'pages') && `${v('edition', 'pages')} S.`, v('edition', 'language'),
+    ].filter(Boolean).join(' · '),
+    isbn: v('edition', 'isbn13') || v('edition', 'isbn10') || 'ohne ISBN',
+    sources: ed.sources.map((s) => Sources.LABELS[s] || s).join(', '),
+  };
+}
+
+/** Lädt ein Quell-Cover einmalig herunter (für Vorschau und Übernahme). */
+function coverBlob(url) {
+  if (!coverBlobs.has(url)) coverBlobs.set(url, Covers.download(url));
+  return coverBlobs.get(url);
+}
+
+/** Erstes ladbares Cover einer Ausgabe als { blob, source } (oder null). */
+async function firstCover(ed) {
+  for (const c of ed.covers) {
+    try {
+      return { blob: await coverBlob(c.url), source: c.source };
+    } catch (err) {
+      // nächstes versuchen
+    }
+  }
+  return null;
+}
+
+/** Cover-Vorschau in ein <img> laden (ohne Hotlinking: das Bild wird heruntergeladen). */
+function loadCoverInto(img, ed) {
+  firstCover(ed).then((c) => {
+    if (c) { img.src = URL.createObjectURL(c.blob); img.hidden = false; }
+  });
+}
+
+/** Auswahlliste mehrerer möglicher Ausgaben (beste Passung zuerst). */
+function showEditionList() {
+  const eds = enrichResult.editions.slice(0, 15);
+  els.enrichStatus.textContent = eds.length === 1
+    ? 'Ein möglicher Treffer. Bitte prüfen, ob es deine Ausgabe ist.'
+    : `${enrichResult.editions.length} mögliche Ausgaben. Wähle die, die du besitzt (beste Übereinstimmung oben).`;
+  els.fieldView.hidden = true;
+  els.enrichAllBtn.hidden = true;
+  els.enrichApplyBtn.hidden = true;
+  els.editionList.hidden = false;
+  els.editionList.innerHTML = '';
+  eds.forEach((ed, i) => {
+    const li = el('li');
+    const btn = el('button', 'edition-option');
+    btn.type = 'button';
+    btn.dataset.index = i;
+    const img = el('img');
+    img.alt = '';
+    img.hidden = true;
+    const placeholder = el('span', 'no-cover');
+    if (ed.covers.length) loadCoverInto(img, ed);
+    img.addEventListener('load', () => placeholder.remove());
+    const t = editionLines(ed);
+    const box = el('span', 'eo-text');
+    box.appendChild(el('strong', null, t.title));
+    if (t.author) box.appendChild(el('span', null, t.author));
+    if (t.details) box.appendChild(el('span', null, t.details));
+    box.appendChild(el('span', 'source-note', `ISBN ${t.isbn} · Quelle: ${t.sources}`));
+    if (ed.match.reasons.length) box.appendChild(el('span', 'eo-match', 'passt zu deinen Angaben: ' + ed.match.reasons.join(', ')));
+    if (ed.uncertain) box.appendChild(el('span', 'badge-uncertain', 'weniger sicher'));
+    btn.append(img, placeholder, box);
+    li.appendChild(btn);
+    els.editionList.appendChild(li);
+  });
+}
+
+/** Zeigt die Felder einer Ausgabe mit Vergleich und Auswahl. */
+function showEditionFields(index) {
+  enrichEdition = enrichResult.editions[index];
+  enrichRows = Enrich.compare(enrichEdition, formCurrent());
+  els.editionList.hidden = true;
+  els.fieldView.hidden = false;
+  $('backToEditions').hidden = enrichResult.editions.length < 2;
+  els.enrichAllBtn.hidden = false;
+  els.enrichApplyBtn.hidden = false;
+
+  const t = editionLines(enrichEdition);
+  els.editionSummary.innerHTML = '';
+  const img = el('img');
+  img.alt = '';
+  img.hidden = true;
+  if (enrichEdition.covers.length) loadCoverInto(img, enrichEdition);
+  const box = el('div');
+  box.appendChild(el('strong', null, t.title));
+  box.appendChild(el('div', null, [t.author, t.details].filter(Boolean).join(' · ')));
+  box.appendChild(el('div', 'source-note', `ISBN ${t.isbn} · Quelle: ${t.sources}`));
+  if (enrichEdition.uncertain) box.appendChild(el('span', 'badge-uncertain', 'weniger sicher'));
+  els.editionSummary.append(img, box);
+
+  const newCount = enrichRows.filter((r) => r.status === 'neu').length;
+  els.enrichStatus.textContent = newCount
+    ? `${newCount} neue Angabe${newCount === 1 ? '' : 'n'} gefunden.`
+    : 'Keine neuen Angaben; unten siehst du Abweichungen zu deinen Werten.';
+
+  els.fieldTable.innerHTML = '';
+  enrichRows.forEach((row, i) => els.fieldTable.appendChild(fieldRowElement(row, i)));
+
+  // Cover als eigene Zeile: vorausgewählt, wenn das Buch noch keins hat
+  if (enrichEdition.covers.length) {
+    const hasCover = Boolean(editingCoverId() || (pendingCover && pendingCover !== 'remove'));
+    const wrap = el('label', 'field-row-check');
+    const cb = el('input');
+    cb.type = 'checkbox';
+    cb.id = 'enrichCover';
+    cb.checked = !hasCover;
+    const label = el('span', 'frc-label');
+    label.append(el('strong', null, 'Cover'), el('span', `status-tag status-${hasCover ? 'abweichend' : 'neu'}`, hasCover ? 'ersetzt dein Cover' : 'neu'),
+      el('span', 'source-note', Sources.LABELS[enrichEdition.covers[0].source]));
+    wrap.append(cb, label, el('span'), el('span', 'frc-current', 'wird heruntergeladen und lokal gespeichert'));
+    els.fieldTable.appendChild(wrap);
+  }
+}
+
+/** Eine Zeile der Feldauswahl. */
+function fieldRowElement(row, i) {
+  const show = (v) => (Array.isArray(v) ? v.join(', ') : v == null ? '' : String(v));
+  const wrap = el('label', 'field-row-check');
+  const cb = el('input');
+  cb.type = 'checkbox';
+  cb.dataset.row = i;
+  cb.checked = row.selected;
+  cb.disabled = row.status === 'identisch';
+  const label = el('span', 'frc-label');
+  label.append(
+    el('strong', null, row.label),
+    el('span', `status-tag status-${row.status}`, row.status),
+    el('span', 'source-note', Sources.LABELS[row.source] || row.source),
+  );
+  const value = el('span', 'frc-value' + (row.field === 'description' ? ' long' : ''), show(row.value));
+  const details = el('span');
+  details.appendChild(value);
+  if (row.status === 'abweichend') details.appendChild(el('span', 'frc-current', ' · bisher: ' + show(row.current)));
+  if (row.alternatives.length) {
+    details.appendChild(el('span', 'frc-current', ' · andere Quellen: ' +
+      row.alternatives.map((a) => `${show(a.value).slice(0, 60)} (${Sources.LABELS[a.source] || a.source})`).join('; ')));
+  }
+  wrap.append(cb, label, el('span'), details);
+  cb.addEventListener('change', () => { enrichRows[i].selected = cb.checked; });
+  return wrap;
+}
+
+/** Übernimmt die ausgewählten Vorschläge ins Formular (gespeichert wird erst mit "Speichern"). */
+async function applyEnrichment(all) {
+  if (all) enrichRows.forEach((r) => { if (r.status !== 'identisch') r.selected = true; });
+  const at = new Date().toISOString();
+  const sections = new Set();
+  let count = 0;
+  for (const row of enrichRows) {
+    if (!row.selected) continue;
+    const section = setFormValue(row.scope, row.field, row.value);
+    if (section) sections.add(section);
+    formProvenance[`${row.scope}.${row.field}`] = { source: row.source, at, value: row.value };
+    count++;
+  }
+  // Die ISBN-10 wird aus der ISBN-13 abgeleitet; ihre Herkunft folgt der übernommenen ISBN
+  if (formProvenance['edition.isbn13'] && !formProvenance['edition.isbn10']) {
+    formProvenance['edition.isbn10'] = Object.assign({}, formProvenance['edition.isbn13'], { value: Isbn.parse(els.isbn.value).isbn10 });
+  }
+  const coverCb = $('enrichCover');
+  const wantCover = coverCb && (coverCb.checked || all);
+  const edition = enrichEdition;
+  els.enrichDialog.close();
+  for (const id of sections) $(id).open = true;
+  els.formNote.textContent = count
+    ? `${count} Angabe${count === 1 ? '' : 'n'} übernommen. Bitte prüfen und speichern.`
+    : 'Keine Angaben übernommen.';
+
+  if (wantCover) {
+    els.coverHint.textContent = 'Cover wird geladen …';
+    const c = await firstCover(edition);
+    if (c) {
+      pendingCover = { blob: c.blob, source: c.source, at };
+      els.coverHint.textContent = `Cover von ${Sources.LABELS[c.source]}; wird beim Speichern übernommen.`;
+      paintCover(editingCoverId());
+    } else {
+      els.coverHint.textContent = 'Das Cover konnte nicht geladen werden (Quelle erlaubt kein Herunterladen). ' +
+        'Du kannst ein eigenes Bild wählen.';
+    }
+  }
+}
+
+$('enrichBtn').addEventListener('click', startEnrichment);
+$('enrichCancelBtn').addEventListener('click', () => { enrichRun++; els.enrichDialog.close(); });
+$('backToEditions').addEventListener('click', showEditionList);
+els.enrichAllBtn.addEventListener('click', () => applyEnrichment(true));
+els.enrichApplyBtn.addEventListener('click', () => applyEnrichment(false));
+els.editionList.addEventListener('click', (e) => {
+  const btn = e.target.closest('.edition-option');
+  if (btn) showEditionFields(Number(btn.dataset.index));
+});
+els.enrichDialog.addEventListener('close', () => { enrichRun++; });
 
 /* ====================================================================
    Kurze Meldung (Toast)
@@ -1220,7 +1726,14 @@ function fillWeights(weights) {
 
 $('settingsBtn').addEventListener('click', () => {
   fillWeights(state.settings.weights);
+  $('sourceChecks').querySelectorAll('input').forEach((cb) => { cb.checked = state.settings.sources[cb.value] !== false; });
+  $('googleKey').value = state.settings.googleApiKey || '';
+  $('autoEnrich').checked = Boolean(state.settings.autoEnrichOnIsbn);
   els.settingsDialog.showModal();
+});
+$('clearCacheBtn').addEventListener('click', () => {
+  lookupCache.clear();
+  showToast('Zwischenspeicher der Suche geleert');
 });
 $('settingsCancelBtn').addEventListener('click', () => els.settingsDialog.close());
 $('resetWeightsBtn').addEventListener('click', () => fillWeights(Score.DEFAULT_WEIGHTS));
@@ -1235,6 +1748,9 @@ els.settingsForm.addEventListener('submit', (e) => {
     weights[key] = Number.isFinite(n) && n > 0 ? Math.min(n, 100) : 0;
   }
   state.settings.weights = weights;
+  $('sourceChecks').querySelectorAll('input').forEach((cb) => { state.settings.sources[cb.value] = cb.checked; });
+  state.settings.googleApiKey = $('googleKey').value.trim();
+  state.settings.autoEnrichOnIsbn = $('autoEnrich').checked;
   saveState();
   els.settingsDialog.close();
   render();
