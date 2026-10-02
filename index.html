@@ -12,6 +12,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,700&display=swap" rel="stylesheet">
+  <!-- Gewähltes Design (System/Hell/Dunkel) vor dem ersten Zeichnen setzen, damit nichts aufblitzt -->
+  <script src="js/theme.js"></script>
+  <script>Theme.apply(document, Theme.load(window.localStorage));</script>
 
   <!--
     Bücher-Tracker mit Leseliste
@@ -28,7 +31,8 @@
        1. DESIGN (Hausstil Web)
        Farben als Variablen, damit man das Farbschema an einer Stelle ändern kann.
        Warmer "Terra"-Hintergrund, eine einzige Akzentfarbe (Signal-Orange),
-       eckige Formen ohne Schatten. Hell- und Dunkelmodus folgen dem System.
+       eckige Formen ohne Schatten. Hell- und Dunkelmodus folgen dem System,
+       außer im Kopf ist "Hell" oder "Dunkel" gewählt (data-theme auf <html>, siehe js/theme.js).
        Schriften: Source Serif 4 (Titel), IBM Plex Sans (Text), IBM Plex Mono (Beschriftungen).
        ------------------------------------------------------------------ */
     :root {
@@ -392,7 +396,7 @@
       border: 1px solid var(--line); padding: 4px 6px; color: var(--muted);
     }
 
-    /* Kopfzeile rechts: Zähler + Einstellungen */
+    /* Kopfzeile rechts: Zähler, Design-Schalter, Einstellungen */
     .header-right { display: flex; align-items: center; gap: 12px; }
     .icon-btn {
       background: none; border: 0; color: var(--ink); cursor: pointer;
@@ -402,6 +406,13 @@
       text-decoration-thickness: 2px; text-underline-offset: 4px;
     }
     .icon-btn:hover { color: var(--accent-text); }
+    .header-right .count, .icon-btn { white-space: nowrap; }
+    /* Auf dem Handy nur "System"/"Hell"/"Dunkel" zeigen, damit die Kopfzeile einzeilig bleibt
+       (der volle Text steht im aria-label) */
+    @media (max-width: 599px) {
+      .theme-prefix { display: none; }
+      .header-inner, .header-right { gap: 8px; }
+    }
 
     /* Sortierung und weitere Filter */
     .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-top: 10px; }
@@ -557,6 +568,8 @@
       <span class="cap app-name">Bücher-Tracker</span>
       <span class="header-right">
         <span class="count" id="totalCount"></span>
+        <!-- Design-Schalter: System → Hell → Dunkel; Beschriftung zeigt die aktuelle Wahl -->
+        <button type="button" class="icon-btn" id="themeBtn"><span class="theme-prefix">Design: </span><span id="themeLabel">System</span></button>
         <button type="button" class="icon-btn" id="settingsBtn">Einstellungen</button>
       </span>
     </div>
