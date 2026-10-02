@@ -3,7 +3,8 @@
    Reine Logik ohne DOM liegt in eigenen Dateien und ist getestet:
      js/isbn.js  – ISBN prüfen und umrechnen
      js/model.js – Datenmodell (Werk, Ausgabe, Eintrag), Migration, Laden
-     js/list.js  – Filtern der Leseliste
+     js/list.js  – Filtern, Sortieren, Warteschlange "Als Nächstes"
+     js/score.js – Score aus Priorität und Teilkriterien
    ==================================================================== */
 'use strict';
 
@@ -17,6 +18,8 @@ let activeView = 'open';     // 'open' (Leseliste), 'archive' oder 'all', siehe 
 let activeFilter = 'all';    // 'all' oder ein Status-Schlüssel
 let activeFormat = 'all';    // Schlüssel aus List.FORMAT_FILTERS
 let searchTerm = '';
+let activeGenre = '';        // '' oder ein Genre/Tag
+let minScore = null;         // null oder Mindestscore
 let editingId = null;        // ID des Eintrags im Bearbeiten-Dialog (null = neues Buch)
 let formRating = 0;          // Sterne im Formular (0 = keine): Priorität bzw. Bewertung nach dem Lesen
 let lastDeleted = null;      // für "Rückgängig" nach dem Löschen
@@ -31,6 +34,14 @@ const els = {
   views: $('views'),
   filters: $('filters'),
   formatFilters: $('formatFilters'),
+  sort: $('sortSelect'),
+  genre: $('genreSelect'),
+  minScore: $('minScoreSelect'),
+  criteria: $('criteriaFields'),
+  scorePreview: $('scorePreview'),
+  settingsDialog: $('settingsDialog'),
+  settingsForm: $('settingsForm'),
+  weightFields: $('weightFields'),
   total: $('totalCount'),
   dialog: $('bookDialog'),
   form: $('bookForm'),
@@ -84,6 +95,7 @@ function saveState() {
           'Änderungen werden deshalb nicht gespeichert, um nichts zu überschreiben.');
     return;
   }
+  List.normalizeQueue(state.entries); // Warteschlange "Als Nächstes" lückenlos halten
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (err) {
@@ -322,6 +334,16 @@ function isRatingAfterReading(status) {
   return status === 'read' || status === 'dropped';
 }
 
+/** Score eines Buchs mit den eingestellten Gewichten (null ohne Angaben). */
+function scoreOf(book) {
+  return Score.compute(book.entry, state.settings.weights);
+}
+
+/** Score als deutscher Text, z. B. "3,8". */
+function formatScore(score) {
+  return score == null ? '' : score.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
 /** Die Ausgabe eines bestimmten Formats zu einem Eintrag (zuerst die eigenen, dann die des Werks). */
 function editionFor(entry, format) {
   const own = entry.editionIds
@@ -354,6 +376,7 @@ function readForm() {
     ownership,
     currentFormat: ownership === 'both' ? (els.currentFormat.value || null) : null,
     rating: formRating || null,
+    criteria: readCriteria(),
     notes: els.notes.value.trim(),
     tags: Model.splitList(els.tags.value),
     work: readFields('w', WORK_FIELDS),
@@ -378,6 +401,7 @@ function applyForm(entry, data) {
   }, at);
   if (isRatingAfterReading(data.status)) entry.finalRating = data.rating;
   else entry.priority = data.rating;
+  entry.criteria = Object.assign({}, entry.criteria, data.criteria);
 
   // Ausgaben: je gezeigtem Format anlegen/aktualisieren, sobald etwas eingetragen ist
   const primary = primaryFormat(data.ownership);
@@ -458,14 +482,37 @@ function undoDelete() {
    Anzeige (Rendering)
    ==================================================================== */
 
-/** Liefert die Bücher, die zu Ansicht, Filtern und Suche passen. */
+/** Liefert die Bücher, die zu Ansicht, Filtern und Suche passen, sortiert. */
 function visibleBooks() {
-  return List.filterBooks(allBooks(), {
+  const list = List.filterBooks(allBooks(), {
     view: activeView,
     status: activeFilter,
     format: activeFormat,
+    genre: activeGenre,
+    minScore,
+    scoreOf,
     search: searchTerm,
   });
+  return List.sortBooks(list, state.settings.sort, { scoreOf });
+}
+
+/** Bücher der Warteschlange "Als Nächstes" in ihrer manuellen Reihenfolge. */
+function inQueueOrder(books) {
+  return books.slice().sort((a, b) => (a.entry.queuePos || 0) - (b.entry.queuePos || 0));
+}
+
+/**
+ * Teilt die Liste in Gruppen. In der Leseliste ohne Statusfilter:
+ * "Lese gerade" oben, dann die Warteschlange, dann der Backlog.
+ */
+function groupedBooks(list) {
+  if (activeFilter === 'next') return [{ title: null, books: inQueueOrder(list), queue: true }];
+  if (activeView !== 'open' || activeFilter !== 'all') return [{ title: null, books: list }];
+  return [
+    { title: STATUSES.reading, books: list.filter((b) => b.status === 'reading') },
+    { title: STATUSES.next, books: inQueueOrder(list.filter((b) => b.status === 'next')), queue: true },
+    { title: STATUSES.backlog, books: list.filter((b) => b.status === 'backlog') },
+  ].filter((g) => g.books.length);
 }
 
 /** Erzeugt einen Filter-Chip mit Anzahl. */
@@ -510,6 +557,15 @@ function renderFilters() {
     els.filters.appendChild(chip('chip', 'filter', key, STATUSES[key], count, activeFilter === key));
   }
 
+  // Genre-Auswahl: alle vorkommenden Genres und Tags
+  const genres = [...new Map(books.flatMap(List.genresOf).map((g) => [List.normalize(g), g])).values()]
+    .sort((a, b) => a.localeCompare(b, 'de'));
+  els.genre.innerHTML = '';
+  fillSelect(els.genre, [['', 'alle'], ...genres.map((g) => [g, g])]);
+  if (activeGenre && !genres.some((g) => List.normalize(g) === List.normalize(activeGenre))) activeGenre = '';
+  els.genre.value = genres.find((g) => List.normalize(g) === List.normalize(activeGenre)) || '';
+  els.sort.value = state.settings.sort;
+
   // Format-Chips: Zählung berücksichtigt Ansicht und Status
   els.formatFilters.innerHTML = '';
   for (const [key, f] of Object.entries(List.FORMAT_FILTERS)) {
@@ -553,7 +609,7 @@ function el(tag, className, text) {
 }
 
 /** Erzeugt die Karte für ein einzelnes Buch. */
-function bookCard(book) {
+function bookCard(book, inQueue = false) {
   // Hinweis: Alle Texte werden per textContent gesetzt, nie per innerHTML.
   // So kann ein Titel wie "<b>" die Seite nicht durcheinanderbringen.
   const { entry, work } = book;
@@ -571,6 +627,12 @@ function bookCard(book) {
   const meta = el('div', 'book-meta');
   meta.appendChild(el('span', 'badge', STATUSES[book.status] || book.status));
   meta.appendChild(el('span', 'badge badge-format', formatLabel(entry)));
+  const score = isRatingAfterReading(book.status) ? null : scoreOf(book);
+  if (score != null) {
+    const b = el('span', 'badge badge-score', 'Score ' + formatScore(score));
+    b.title = 'Score aus Priorität und Teilkriterien (1–5)';
+    meta.appendChild(b);
+  }
   if (book.rating > 0) {
     meta.appendChild(starsElement(book.rating, isRatingAfterReading(book.status) ? 'Bewertung' : 'Priorität'));
   }
@@ -593,7 +655,22 @@ function bookCard(book) {
   const delBtn = el('button', 'btn btn-danger', 'Löschen');
   delBtn.type = 'button';
   delBtn.dataset.action = 'delete';
-  actions.append(added, editBtn, delBtn);
+  if (inQueue) {
+    // Manuelle Reihenfolge der Warteschlange: Platz + Hoch/Runter statt Datum
+    const q = el('div', 'queue-btns');
+    q.appendChild(el('span', 'queue-pos', `${entry.queuePos}.`));
+    for (const [delta, label, text] of [[-1, 'Nach oben', '↑'], [1, 'Nach unten', '↓']]) {
+      const b = el('button', 'btn', text);
+      b.type = 'button';
+      b.dataset.action = 'move';
+      b.dataset.delta = delta;
+      b.setAttribute('aria-label', label);
+      q.appendChild(b);
+    }
+    actions.append(q, editBtn, delBtn);
+  } else {
+    actions.append(added, editBtn, delBtn);
+  }
   li.appendChild(actions);
 
   return li;
@@ -607,7 +684,14 @@ function render() {
 
   const list = visibleBooks();
   els.list.innerHTML = '';
-  for (const book of list) els.list.appendChild(bookCard(book));
+  for (const group of groupedBooks(list)) {
+    if (group.title) {
+      const head = el('li', 'group-head');
+      head.appendChild(el('h2', null, `${group.title} (${group.books.length})`));
+      els.list.appendChild(head);
+    }
+    for (const book of group.books) els.list.appendChild(bookCard(book, Boolean(group.queue)));
+  }
 
   // Hinweis anzeigen, wenn nichts zu sehen ist
   if (list.length === 0) {
@@ -616,7 +700,8 @@ function render() {
       els.empty.innerHTML =
         '<h2>Dein Regal ist noch leer</h2>' +
         '<p>Tippe auf <strong>+</strong>, um dein erstes Buch hinzuzufügen.</p>';
-    } else if (activeView === 'open' && activeFilter === 'all' && activeFormat === 'all' && !searchTerm) {
+    } else if (activeView === 'open' && activeFilter === 'all' && activeFormat === 'all' &&
+               !searchTerm && !activeGenre && minScore == null) {
       els.empty.innerHTML = '<p>Keine offenen Bücher. Gelesene findest du im <strong>Archiv</strong>.</p>';
     } else {
       els.empty.innerHTML = '<p>Keine Bücher gefunden.</p>';
@@ -641,6 +726,46 @@ function fillSelect(select, options) {
 }
 fillSelect(els.status, Object.entries(STATUSES));
 fillSelect(els.ownership, [...Object.entries(Model.OWNERSHIP), ['', 'nicht angegeben']]);
+fillSelect(els.sort, Object.entries(List.SORTS).map(([key, s]) => [key, s.label]));
+
+/* ---------- Teilkriterien (je 1–5) im Formular ---------- */
+
+const CRITERIA_FIELDS = [
+  ['anticipation', 'Vorfreude'],
+  ['urgency', 'Aktualität/Zeitdruck'],
+  ['effort', 'Umfang/Aufwand (1 = leicht, 5 = aufwendig)'],
+  ['mood', 'Passt zur Stimmung'],
+];
+for (const [key, label] of CRITERIA_FIELDS) {
+  const wrap = el('div', 'field');
+  const lab = el('label', null, label);
+  lab.htmlFor = `c-${key}`;
+  const select = document.createElement('select');
+  select.id = `c-${key}`;
+  fillSelect(select, [['', '–'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5']]);
+  select.addEventListener('change', paintScorePreview);
+  wrap.append(lab, select);
+  els.criteria.appendChild(wrap);
+}
+
+function readCriteria() {
+  const out = {};
+  for (const [key] of CRITERIA_FIELDS) {
+    const v = $(`c-${key}`).value;
+    out[key] = v ? Number(v) : null;
+  }
+  return out;
+}
+
+/** Zeigt im Formular den Score, der sich aus den aktuellen Angaben ergibt. */
+function paintScorePreview() {
+  if (isRatingAfterReading(els.status.value)) {
+    els.scorePreview.textContent = '';
+    return;
+  }
+  const score = Score.compute({ priority: formRating || null, criteria: readCriteria() }, state.settings.weights);
+  els.scorePreview.textContent = score == null ? 'noch kein Score' : `Score ${formatScore(score)}`;
+}
 
 // Fünf Stern-Knöpfe für die Bewertung anlegen
 for (let i = 1; i <= 5; i++) {
@@ -718,10 +843,17 @@ function openDialog(book = null) {
     ['secSpecial', primary && readFields('s', SPECIAL_FIELDS)],
   ]) $(id).open = Boolean(values && hasContent(values));
 
+  for (const [key] of CRITERIA_FIELDS) {
+    const v = entry && entry.criteria ? entry.criteria[key] : null;
+    $(`c-${key}`).value = v ? String(v) : '';
+  }
+  $('secCriteria').open = Boolean(entry && Object.values(readCriteria()).some((v) => v != null));
+
   formRating = book ? book.rating : 0;
   els.error.textContent = '';
   paintStars();
   paintRatingLabel();
+  paintScorePreview();
   paintOwnership();
   els.dialog.showModal();
   els.dialog.scrollTop = 0;
@@ -786,7 +918,7 @@ function hideToast() {
 $('addBtn').addEventListener('click', () => openDialog());
 $('cancelBtn').addEventListener('click', closeDialog);
 els.form.addEventListener('submit', submitForm);
-els.status.addEventListener('change', paintRatingLabel);
+els.status.addEventListener('change', () => { paintRatingLabel(); paintScorePreview(); });
 els.ownership.addEventListener('change', paintOwnership);
 els.isbn.addEventListener('blur', () => showIsbnHint(els.isbn, els.isbnHint));
 els.toastUndo.addEventListener('click', undoDelete);
@@ -803,6 +935,7 @@ els.stars.addEventListener('click', (e) => {
   const value = Number(btn.dataset.value);
   formRating = formRating === value ? 0 : value;
   paintStars();
+  paintScorePreview();
 });
 
 // Suche: Liste bei jeder Eingabe aktualisieren
@@ -836,6 +969,21 @@ els.formatFilters.addEventListener('click', (e) => {
   render();
 });
 
+// Sortierung (wird gespeichert), Genre und Mindestscore
+els.sort.addEventListener('change', () => {
+  state.settings.sort = els.sort.value;
+  saveState();
+  render();
+});
+els.genre.addEventListener('change', () => {
+  activeGenre = els.genre.value;
+  render();
+});
+els.minScore.addEventListener('change', () => {
+  minScore = els.minScore.value ? Number(els.minScore.value) : null;
+  render();
+});
+
 // Bearbeiten/Löschen-Knöpfe in den Karten (ein Listener für die ganze Liste)
 els.list.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-action]');
@@ -844,6 +992,15 @@ els.list.addEventListener('click', (e) => {
   const book = allBooks().find((b) => b.id === id);
   if (!book) return;
   if (btn.dataset.action === 'edit') openDialog(book);
+  if (btn.dataset.action === 'move') {
+    if (List.moveInQueue(state.entries, id, Number(btn.dataset.delta))) {
+      saveState();
+      render();
+      // Fokus auf dem Knopf am neuen Platz halten (bequem für mehrfaches Verschieben)
+      const card = els.list.querySelector(`.book[data-id="${id}"] [data-delta="${btn.dataset.delta}"]`);
+      if (card) card.focus();
+    }
+  }
   if (btn.dataset.action === 'delete') {
     if (confirm(`„${book.title}" wirklich löschen?`)) deleteBook(id);
   }
@@ -855,6 +1012,50 @@ window.addEventListener('storage', (e) => {
     state = loadState();
     render();
   }
+});
+
+/* ====================================================================
+   Einstellungen: Score-Gewichte
+   ==================================================================== */
+
+for (const [key, label] of Object.entries(Score.CRITERIA)) {
+  const wrap = el('div', 'field');
+  const lab = el('label', null, label);
+  lab.htmlFor = `wt-${key}`;
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.inputMode = 'numeric';
+  input.min = '0';
+  input.max = '100';
+  input.id = `wt-${key}`;
+  wrap.append(lab, input);
+  els.weightFields.appendChild(wrap);
+}
+
+function fillWeights(weights) {
+  for (const key of Object.keys(Score.CRITERIA)) $(`wt-${key}`).value = weights[key] ?? 0;
+}
+
+$('settingsBtn').addEventListener('click', () => {
+  fillWeights(state.settings.weights);
+  els.settingsDialog.showModal();
+});
+$('settingsCancelBtn').addEventListener('click', () => els.settingsDialog.close());
+$('resetWeightsBtn').addEventListener('click', () => fillWeights(Score.DEFAULT_WEIGHTS));
+els.settingsDialog.addEventListener('click', (e) => {
+  if (e.target === els.settingsDialog) els.settingsDialog.close();
+});
+els.settingsForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const weights = {};
+  for (const key of Object.keys(Score.CRITERIA)) {
+    const n = Number($(`wt-${key}`).value);
+    weights[key] = Number.isFinite(n) && n > 0 ? Math.min(n, 100) : 0;
+  }
+  state.settings.weights = weights;
+  saveState();
+  els.settingsDialog.close();
+  render();
 });
 
 // Los geht's

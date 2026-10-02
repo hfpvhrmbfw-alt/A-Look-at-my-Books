@@ -47,6 +47,7 @@
     sources: { openlibrary: true, googlebooks: true, dnb: true },
     googleApiKey: '',
     autoEnrichOnIsbn: false,
+    sort: 'score',           // zuletzt gewählte Sortierung der Liste
   };
 
   function newId() {

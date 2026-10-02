@@ -94,6 +94,11 @@
       padding-top: 16px;
     }
 
+    /* Auf dem Handy wäre die Leiste mit allen Filtern zu hoch zum Mitscrollen */
+    @media (max-width: 599px) {
+      .toolbar { position: static; }
+    }
+
     .search {
       width: 100%;
       padding: 12px 14px;
@@ -309,6 +314,35 @@
     .tags { display: flex; flex-wrap: wrap; gap: 4px; }
     .tag { font-size: 0.75rem; border-radius: 6px; padding: 1px 6px; background: var(--bg); color: var(--muted); }
 
+    /* Kopfzeile rechts: Zähler + Einstellungen */
+    .header-right { display: flex; align-items: center; gap: 8px; }
+    .icon-btn {
+      background: none; border: none; color: #f6efe4; font-size: 1.4rem; cursor: pointer;
+      min-width: 44px; min-height: 44px; border-radius: 10px;
+    }
+    .icon-btn:hover { background: rgba(255, 255, 255, 0.1); }
+
+    /* Sortierung und weitere Filter */
+    .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-top: 6px; }
+    .control { display: flex; flex-direction: column; font-size: 0.75rem; color: var(--muted); gap: 2px; min-width: 0; }
+    .control select {
+      font: inherit; font-size: 0.9rem; color: var(--ink); padding: 8px; min-height: 40px;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--surface); width: 100%;
+    }
+
+    /* Gruppen-Überschriften in der Leseliste (Lese gerade / Als Nächstes / Backlog) */
+    .group-head { grid-column: 1 / -1; list-style: none; margin: 8px 0 -4px; }
+    .group-head h2 { font-size: 1.1rem; font-weight: normal; margin: 0; color: var(--muted); }
+    .badge-score { background: var(--header); }
+    .queue-btns { display: flex; align-items: center; gap: 4px; margin-right: auto; }
+    .queue-btns .btn { min-width: 44px; padding: 8px; }
+    .queue-pos { font-family: var(--serif); color: var(--muted); font-size: 1rem; }
+
+    /* Teilkriterien und Gewichte */
+    .criteria, .weights { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+    .weights { margin-bottom: 12px; }
+    .settings-head { font-family: var(--serif); font-weight: normal; margin: 8px 0 4px; }
+
     .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
     .error { color: var(--danger); font-size: 0.85rem; min-height: 1em; }
 
@@ -356,7 +390,10 @@
   <header class="app-header">
     <div class="header-inner">
       <h1>📚 Meine Bücher</h1>
-      <span class="count" id="totalCount"></span>
+      <span class="header-right">
+        <span class="count" id="totalCount"></span>
+        <button type="button" class="icon-btn" id="settingsBtn" aria-label="Einstellungen" title="Einstellungen">⚙</button>
+      </span>
     </div>
   </header>
 
@@ -369,6 +406,27 @@
       <!-- Filter-Chips werden per JavaScript erzeugt (mit Anzahl je Status bzw. Format) -->
       <div class="filters" id="filters" role="group" aria-label="Nach Status filtern"></div>
       <div class="filters" id="formatFilters" role="group" aria-label="Nach Format filtern"></div>
+      <div class="controls">
+        <label class="control">
+          <span>Sortieren</span>
+          <select id="sortSelect"></select>
+        </label>
+        <label class="control">
+          <span>Genre/Tag</span>
+          <select id="genreSelect"></select>
+        </label>
+        <label class="control">
+          <span>Mind. Score</span>
+          <select id="minScoreSelect">
+            <option value="">alle</option>
+            <option value="2">ab 2</option>
+            <option value="3">ab 3</option>
+            <option value="3.5">ab 3,5</option>
+            <option value="4">ab 4</option>
+            <option value="4.5">ab 4,5</option>
+          </select>
+        </label>
+      </div>
     </div>
 
     <ul class="book-list" id="bookList" aria-live="polite"></ul>
@@ -425,6 +483,11 @@
         <div class="star-input" id="starInput"></div>
       </fieldset>
 
+      <details class="section" id="secCriteria">
+        <summary>Leseinteresse im Detail <span class="hint-inline" id="scorePreview"></span></summary>
+        <div class="section-body criteria" id="criteriaFields"></div>
+      </details>
+
       <div class="field">
         <label for="fNotes">Notizen</label>
         <textarea id="fNotes" name="notes" placeholder="Gedanken, Zitate, Empfehlung von …"></textarea>
@@ -461,6 +524,24 @@
     </form>
   </dialog>
 
+  <!-- Einstellungen: Score-Gewichte (später auch Quellen, Import/Export) -->
+  <dialog id="settingsDialog" aria-labelledby="settingsTitle">
+    <form class="dialog-form" id="settingsForm" method="dialog" novalidate>
+      <h2 id="settingsTitle">Einstellungen</h2>
+
+      <h3 class="settings-head">Score-Gewichtung</h3>
+      <p class="field-hint">Der Score ist der gewichtete Mittelwert der Angaben (1–5) eines Buchs.
+        Fehlende Angaben zählen nicht mit, Gewicht 0 schaltet ein Kriterium ab.</p>
+      <div class="weights" id="weightFields"></div>
+      <button type="button" class="btn" id="resetWeightsBtn">Standard wiederherstellen</button>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="settingsCancelBtn">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Meldung mit "Rückgängig" nach dem Löschen -->
   <div class="toast" id="toast" role="status" hidden>
     <span id="toastText"></span>
@@ -471,6 +552,7 @@
   <script src="js/isbn.js"></script>
   <script src="js/model.js"></script>
   <script src="js/list.js"></script>
+  <script src="js/score.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
