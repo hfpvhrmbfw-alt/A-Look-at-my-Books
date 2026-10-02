@@ -2,7 +2,7 @@
 
 Book Tracker of current reads, next in line etc.
 
-Ein einfacher Bücher-Tracker als einzelne Datei (`index.html`), ohne Abhängigkeiten.
+Ein Bücher-Tracker ohne Abhängigkeiten und ohne Build: `index.html` plus ein paar Skripte im Ordner `js/`.
 
 ## Funktionen (Muss-Version)
 
@@ -28,3 +28,16 @@ Im `localStorage` des Browsers, also nur auf dem Gerät und in dem Browser,
 in dem die Bücher eingetragen wurden. Handy und Laptop haben getrennte Listen,
 und beim Löschen der Browserdaten gehen die Einträge verloren.
 Ein Export/Import (CSV) ist für später geplant.
+
+Seit der Leseliste (Datenformat v2) liegen die Daten unter `buecher-tracker.v2`.
+Beim ersten Öffnen werden vorhandene Daten aus `buecher-tracker.v1` automatisch
+übernommen; die alten Daten bleiben als Sicherung unverändert liegen.
+
+## Tests
+
+Die reine Logik (ISBN, Datenmodell und Migration …) ist mit dem in Node
+eingebauten Testrunner getestet, ohne zusätzliche Pakete:
+
+```
+npm test        # oder: node --test
+```
