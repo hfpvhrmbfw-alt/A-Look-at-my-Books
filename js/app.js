@@ -5,6 +5,7 @@
      js/model.js – Datenmodell (Werk, Ausgabe, Eintrag), Migration, Laden
      js/list.js  – Filtern, Sortieren, Warteschlange "Als Nächstes"
      js/score.js – Score aus Priorität und Teilkriterien
+     js/progress.js – Lesefortschritt, Verlauf, Restdauer
    ==================================================================== */
 'use strict';
 
@@ -22,6 +23,7 @@ let activeGenre = '';        // '' oder ein Genre/Tag
 let minScore = null;         // null oder Mindestscore
 let editingId = null;        // ID des Eintrags im Bearbeiten-Dialog (null = neues Buch)
 let formRating = 0;          // Sterne im Formular (0 = keine): Priorität bzw. Bewertung nach dem Lesen
+let progressId = null;       // ID des Eintrags im Fortschritt-Dialog
 let lastDeleted = null;      // für "Rückgängig" nach dem Löschen
 let toastTimer = null;
 
@@ -42,6 +44,20 @@ const els = {
   settingsDialog: $('settingsDialog'),
   settingsForm: $('settingsForm'),
   weightFields: $('weightFields'),
+  startDate: $('fStartDate'),
+  endDate: $('fEndDate'),
+  progressDialog: $('progressDialog'),
+  progressForm: $('progressForm'),
+  progressBook: $('progressBook'),
+  pUnit: $('pUnit'),
+  pValue: $('pValue'),
+  pValueLabel: $('pValueLabel'),
+  pChapterCountField: $('pChapterCountField'),
+  pChapterCount: $('pChapterCount'),
+  pDate: $('pDate'),
+  pPreview: $('pPreview'),
+  progressLog: $('progressLog'),
+  progressError: $('progressError'),
   total: $('totalCount'),
   dialog: $('bookDialog'),
   form: $('bookForm'),
@@ -352,6 +368,20 @@ function editionFor(entry, format) {
   return own || state.editions.find((e) => e.workId === entry.workId && e.format === format) || null;
 }
 
+/** Format, in dem gerade gelesen wird: bei "beides" die Angabe, sonst das Besitzformat. */
+function readingFormat(entry) {
+  if (entry.ownership === 'both') return entry.currentFormat || 'print';
+  return entry.ownership === 'ebook' ? 'ebook' : 'print';
+}
+
+/** Seitenzahl der Ausgabe, in der gerade gelesen wird (sonst irgendeiner bekannten Ausgabe). */
+function totalPagesOf(entry) {
+  const ed = editionFor(entry, readingFormat(entry));
+  if (ed && ed.pages) return ed.pages;
+  const any = entry.editionIds.map((id) => state.editions.find((e) => e.id === id)).find((e) => e && e.pages);
+  return any ? any.pages : null;
+}
+
 /** Welche Ausgabe-Formate zeigt das Formular bei diesem Besitzformat? */
 function formatsFor(ownership) {
   if (ownership === 'ebook') return ['ebook'];
@@ -377,6 +407,8 @@ function readForm() {
     currentFormat: ownership === 'both' ? (els.currentFormat.value || null) : null,
     rating: formRating || null,
     criteria: readCriteria(),
+    startDate: els.startDate.value || null,
+    endDate: els.endDate.value || null,
     notes: els.notes.value.trim(),
     tags: Model.splitList(els.tags.value),
     work: readFields('w', WORK_FIELDS),
@@ -402,6 +434,8 @@ function applyForm(entry, data) {
   if (isRatingAfterReading(data.status)) entry.finalRating = data.rating;
   else entry.priority = data.rating;
   entry.criteria = Object.assign({}, entry.criteria, data.criteria);
+  entry.progress.startDate = data.startDate;
+  entry.progress.endDate = data.endDate;
 
   // Ausgaben: je gezeigtem Format anlegen/aktualisieren, sobald etwas eingetragen ist
   const primary = primaryFormat(data.ownership);
@@ -424,6 +458,9 @@ function applyForm(entry, data) {
   // Ausgaben eines nicht mehr gewählten Formats bleiben beim Werk gespeichert,
   // gehören aber nicht mehr zu "meinen" Ausgaben.
   entry.editionIds = editionIds;
+
+  // Gelesen: Fortschritt auf 100 %, Enddatum vorbelegt (das Datum im Formular hat Vorrang)
+  if (data.status === 'read') Progress.markRead(entry.progress, totalPagesOf(entry), data.endDate);
 }
 
 /** Legt ein neues Buch (Werk + Eintrag) an. */
@@ -460,7 +497,7 @@ function deleteBook(id) {
   }
   saveState();
   render();
-  showToast(`„${work.title}" gelöscht`);
+  showToast(`„${work.title}" gelöscht`, true);
 }
 
 /** Stellt das zuletzt gelöschte Buch an seiner alten Position wieder her. */
@@ -608,6 +645,47 @@ function el(tag, className, text) {
   return node;
 }
 
+/** Datum 'YYYY-MM-DD' als deutsches Datum. */
+function formatDate(day) {
+  return day ? new Date(day + 'T00:00:00').toLocaleDateString('de-DE') : '';
+}
+
+/**
+ * Fortschrittsbalken mit Stand, "zuletzt gelesen" und Restdauer.
+ * Nur bei "Lese gerade" oder wenn bei offenen/abgebrochenen Büchern schon ein Stand existiert.
+ */
+function progressElement(entry) {
+  const p = entry.progress;
+  const pages = totalPagesOf(entry);
+  const pct = Progress.percentOf(p, pages);
+  const hasStand = pct != null || p.page != null || p.chapter != null;
+  if (entry.status === 'read') {
+    if (!p.endDate) return null;
+    return el('p', 'progress-text', `Gelesen ${p.startDate && p.startDate !== p.endDate ? `${formatDate(p.startDate)} – ` : 'am '}${formatDate(p.endDate)}`);
+  }
+  if (entry.status !== 'reading' && !hasStand) return null;
+
+  const box = el('div', 'progress');
+  const bar = el('div', 'progress-bar');
+  bar.setAttribute('role', 'progressbar');
+  bar.setAttribute('aria-valuemin', '0');
+  bar.setAttribute('aria-valuemax', '100');
+  if (pct != null) bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+  const fill = el('span');
+  fill.style.width = `${pct || 0}%`;
+  bar.appendChild(fill);
+  box.appendChild(bar);
+
+  const text = el('div', 'progress-text');
+  text.appendChild(el('span', null, Progress.describe(p, pages) || 'noch kein Stand eingetragen'));
+  const last = Progress.lastReadAt(p);
+  if (last) text.appendChild(el('span', null, `zuletzt ${formatDate(last)}`));
+  const days = entry.status === 'reading' ? Progress.estimateDaysLeft(p, pages) : null;
+  if (days) text.appendChild(el('span', null, `noch ca. ${days} ${days === 1 ? 'Tag' : 'Tage'}`));
+  box.appendChild(text);
+  return box;
+}
+
 /** Erzeugt die Karte für ein einzelnes Buch. */
 function bookCard(book, inQueue = false) {
   // Hinweis: Alle Texte werden per textContent gesetzt, nie per innerHTML.
@@ -638,6 +716,9 @@ function bookCard(book, inQueue = false) {
   }
   li.appendChild(meta);
 
+  const progressBox = progressElement(entry);
+  if (progressBox) li.appendChild(progressBox);
+
   const tags = List.genresOf(book);
   if (tags.length) {
     const box = el('div', 'tags');
@@ -655,7 +736,13 @@ function bookCard(book, inQueue = false) {
   const delBtn = el('button', 'btn btn-danger', 'Löschen');
   delBtn.type = 'button';
   delBtn.dataset.action = 'delete';
-  if (inQueue) {
+  if (book.status === 'reading') {
+    // Beim aktuellen Buch ist "Fortschritt" wichtiger als das Hinzufügedatum
+    const pBtn = el('button', 'btn btn-primary push-left', 'Fortschritt');
+    pBtn.type = 'button';
+    pBtn.dataset.action = 'progress';
+    actions.append(pBtn, editBtn, delBtn);
+  } else if (inQueue) {
     // Manuelle Reihenfolge der Warteschlange: Platz + Hoch/Runter statt Datum
     const q = el('div', 'queue-btns');
     q.appendChild(el('span', 'queue-pos', `${entry.queuePos}.`));
@@ -830,6 +917,8 @@ function openDialog(book = null) {
   els.ownership.value = ownership;
   els.currentFormat.value = entry && entry.currentFormat ? entry.currentFormat : '';
   els.notes.value = entry ? entry.notes : '';
+  els.startDate.value = entry && entry.progress.startDate ? entry.progress.startDate : '';
+  els.endDate.value = entry && entry.progress.endDate ? entry.progress.endDate : '';
   els.tags.value = entry ? entry.tags.join(', ') : '';
   fillFields('w', WORK_FIELDS, work);
   fillFields('p', PRINT_FIELDS, print);
@@ -899,8 +988,9 @@ function submitForm(event) {
    Kurze Meldung (Toast)
    ==================================================================== */
 
-function showToast(text) {
+function showToast(text, withUndo = false) {
   els.toastText.textContent = text;
+  els.toastUndo.hidden = !withUndo;
   els.toast.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(hideToast, 6000);
@@ -918,7 +1008,13 @@ function hideToast() {
 $('addBtn').addEventListener('click', () => openDialog());
 $('cancelBtn').addEventListener('click', closeDialog);
 els.form.addEventListener('submit', submitForm);
-els.status.addEventListener('change', () => { paintRatingLabel(); paintScorePreview(); });
+els.status.addEventListener('change', () => {
+  paintRatingLabel();
+  paintScorePreview();
+  // Datum vorbelegen (überschreibbar): Beginn bei "Lese gerade", Ende bei "Gelesen"
+  if (els.status.value === 'reading' && !els.startDate.value) els.startDate.value = Progress.today();
+  if (els.status.value === 'read' && !els.endDate.value) els.endDate.value = Progress.today();
+});
 els.ownership.addEventListener('change', paintOwnership);
 els.isbn.addEventListener('blur', () => showIsbnHint(els.isbn, els.isbnHint));
 els.toastUndo.addEventListener('click', undoDelete);
@@ -992,6 +1088,7 @@ els.list.addEventListener('click', (e) => {
   const book = allBooks().find((b) => b.id === id);
   if (!book) return;
   if (btn.dataset.action === 'edit') openDialog(book);
+  if (btn.dataset.action === 'progress') openProgress(book);
   if (btn.dataset.action === 'move') {
     if (List.moveInQueue(state.entries, id, Number(btn.dataset.delta))) {
       saveState();
@@ -1012,6 +1109,91 @@ window.addEventListener('storage', (e) => {
     state = loadState();
     render();
   }
+});
+
+/* ====================================================================
+   Fortschritt-Dialog
+   ==================================================================== */
+
+/** Öffnet den Dialog zum Eintragen des aktuellen Stands. */
+function openProgress(book) {
+  const { entry, work } = book;
+  const p = entry.progress;
+  progressId = entry.id;
+  const pages = totalPagesOf(entry);
+  const format = readingFormat(entry);
+  els.progressBook.textContent = work.title + (entry.ownership === 'both' ? ` · liest als ${format === 'ebook' ? 'E-Book' : 'Print'}` : '') +
+    (pages ? ` · ${pages} Seiten` : '');
+  // Führende Einheit: die zuletzt genutzte; bei E-Books ohne Seitenzahl Prozent
+  els.pUnit.value = p.log.length || p.page != null || p.percent != null || p.chapter != null
+    ? p.unit : (format === 'ebook' && !pages ? 'percent' : 'page');
+  const current = { page: p.page, percent: p.percent, chapter: p.chapter }[els.pUnit.value];
+  els.pValue.value = current == null ? '' : current;
+  els.pChapterCount.value = p.chapterCount || '';
+  els.pDate.value = Progress.today();
+  els.progressError.textContent = '';
+  els.progressLog.innerHTML = '';
+  for (const item of p.log.slice(-10).reverse()) {
+    els.progressLog.appendChild(el('li', null, `${formatDate(item.date)}: ${Progress.describe(Object.assign({}, p, item, { unit: p.unit }), pages) || '–'}`));
+  }
+  paintProgressForm();
+  els.progressDialog.showModal();
+  els.pValue.focus();
+  els.pValue.select();
+}
+
+/** Beschriftung und Vorschau im Fortschritt-Dialog. */
+function paintProgressForm() {
+  const entry = state.entries.find((e) => e.id === progressId);
+  if (!entry) return;
+  const unit = els.pUnit.value;
+  els.pValueLabel.textContent = { page: 'Seite', percent: 'Prozent', chapter: 'Kapitel' }[unit];
+  els.pValue.max = unit === 'percent' ? '100' : '';
+  els.pChapterCountField.hidden = unit !== 'chapter';
+  const d = Progress.derive({ unit, value: els.pValue.value, chapterCount: els.pChapterCount.value }, totalPagesOf(entry));
+  els.pPreview.textContent = Progress.describe(Object.assign({ unit, chapterCount: Number(els.pChapterCount.value) || null }, d), totalPagesOf(entry));
+}
+
+els.pUnit.addEventListener('change', paintProgressForm);
+els.pValue.addEventListener('input', paintProgressForm);
+els.pChapterCount.addEventListener('input', paintProgressForm);
+$('progressCancelBtn').addEventListener('click', () => els.progressDialog.close());
+els.progressDialog.addEventListener('click', (e) => {
+  if (e.target === els.progressDialog) els.progressDialog.close();
+});
+
+els.progressForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const entry = state.entries.find((x) => x.id === progressId);
+  if (!entry) return;
+  const value = els.pValue.value;
+  if (value === '' || !(Number(value) >= 0)) {
+    els.progressError.textContent = 'Bitte einen Stand eintragen.';
+    els.pValue.focus();
+    return;
+  }
+  Progress.record(entry.progress, {
+    unit: els.pUnit.value,
+    value: Number(value),
+    chapterCount: els.pChapterCount.value ? Number(els.pChapterCount.value) : null,
+    date: els.pDate.value || Progress.today(),
+  }, totalPagesOf(entry));
+  saveState();
+  els.progressDialog.close();
+  render();
+});
+
+// "Fertig gelesen": Status Gelesen, 100 %, Enddatum = gewähltes Datum
+$('progressDoneBtn').addEventListener('click', () => {
+  const entry = state.entries.find((x) => x.id === progressId);
+  if (!entry) return;
+  entry.status = 'read';
+  Model.setSource(entry, 'status', 'manual');
+  Progress.markRead(entry.progress, totalPagesOf(entry), els.pDate.value || Progress.today());
+  saveState();
+  els.progressDialog.close();
+  render();
+  showToast(`„${Model.resolve(state, entry).work.title}" ist jetzt im Archiv`);
 });
 
 /* ====================================================================
