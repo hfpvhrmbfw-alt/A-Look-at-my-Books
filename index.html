@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#4a3426">
+  <title>Meine Bücher</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+
+  <!--
+    Bücher-Tracker (Muss-Version)
+    =============================
+    Eine einzelne HTML-Datei ohne externe Abhängigkeiten.
+    - Daten werden im Browser per localStorage gespeichert (nur auf diesem Gerät/Browser).
+    - Funktionen: Buch hinzufügen, bearbeiten, löschen; Status, Bewertung (1–5 Sterne),
+      Notizen; Filter nach Status und Suche nach Titel/Autor.
+    Aufbau dieser Datei: 1. CSS (Design)  2. HTML (Gerüst)  3. JavaScript (Logik)
+  -->
+
+  <style>
+    /* ------------------------------------------------------------------
+       1. DESIGN
+       Farben als Variablen, damit man das Farbschema an einer Stelle ändern kann.
+       Gemütlicher Bibliotheks-Look: Pergament-Hintergrund, warme Brauntöne.
+       ------------------------------------------------------------------ */
+    :root {
+      --bg: #f6efe4;          /* Pergament */
+      --surface: #fffaf2;     /* Karten */
+      --ink: #3b2a1f;         /* Haupttext, dunkles Braun */
+      --muted: #7a6455;       /* Nebentext */
+      --line: #e3d5c1;        /* Rahmen */
+      --accent: #8b5a2b;      /* Leder-Braun */
+      --accent-dark: #6b4220;
+      --header: #4a3426;      /* dunkles Holz */
+      --star: #c8902e;        /* Goldton für Sterne */
+      --danger: #a8402f;
+
+      /* Farben der Status-Markierungen */
+      --st-want: #5c7a8a;
+      --st-reading: #4f7a46;
+      --st-read: #8b5a2b;
+      --st-dropped: #8a7a6e;
+
+      --serif: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", serif;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { margin: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 16px;            /* 16px verhindert Auto-Zoom bei Eingabefeldern auf dem iPhone */
+      line-height: 1.5;
+      -webkit-text-size-adjust: 100%;
+      /* Platz unten für den schwebenden "+"-Knopf auf dem Handy */
+      padding-bottom: calc(96px + env(safe-area-inset-bottom));
+    }
+
+    h1, h2, h3, .book-title { font-family: var(--serif); }
+
+    /* Kopfbereich mit Titel */
+    header.app-header {
+      background: var(--header);
+      color: #f6efe4;
+      padding: calc(16px + env(safe-area-inset-top)) 16px 16px;
+    }
+    .header-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    header h1 { margin: 0; font-size: 1.6rem; font-weight: normal; letter-spacing: 0.02em; }
+    header .count { color: #d9c7b0; font-size: 0.9rem; }
+
+    main { max-width: 900px; margin: 0 auto; padding: 16px; }
+
+    /* Suche + Filter bleiben beim Scrollen oben sichtbar */
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: var(--bg);
+      padding: 12px 0 8px;
+      margin: -16px 0 8px;
+      padding-top: 16px;
+    }
+
+    .search {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      font: inherit;
+      color: inherit;
+    }
+    .search:focus, input:focus, select:focus, textarea:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    /* Filter-Chips: auf dem Handy waagerecht wischbar */
+    .filters {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 10px 0 4px;
+      scrollbar-width: none;
+    }
+    .filters::-webkit-scrollbar { display: none; }
+    .chip {
+      flex: 0 0 auto;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font: inherit;
+      font-size: 0.9rem;
+      cursor: pointer;
+      min-height: 40px;
+    }
+    .chip[aria-pressed="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .chip .n { opacity: 0.7; margin-left: 4px; }
+
+    /* Bücherliste */
+    .book-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+    @media (min-width: 700px) {
+      .book-list { grid-template-columns: 1fr 1fr; }
+    }
+
+    .book {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-left: 6px solid var(--st-color, var(--accent)); /* farbiger "Buchrücken" je Status */
+      border-radius: var(--radius);
+      padding: 14px 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: 0 1px 2px rgba(59, 42, 31, 0.06);
+    }
+    .book[data-status="want"]    { --st-color: var(--st-want); }
+    .book[data-status="reading"] { --st-color: var(--st-reading); }
+    .book[data-status="read"]    { --st-color: var(--st-read); }
+    .book[data-status="dropped"] { --st-color: var(--st-dropped); }
+
+    .book-title { font-size: 1.2rem; margin: 0; line-height: 1.25; overflow-wrap: anywhere; }
+    .book-author { color: var(--muted); margin: 0; overflow-wrap: anywhere; }
+    .book-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 0.9rem; }
+    .badge {
+      background: var(--st-color);
+      color: #fff;
+      border-radius: 999px;
+      padding: 2px 10px;
+      font-size: 0.8rem;
+    }
+    .stars-display { color: var(--star); letter-spacing: 1px; }
+    .stars-display .off { color: var(--line); }
+    .book-notes {
+      margin: 4px 0 0;
+      color: var(--ink);
+      font-size: 0.95rem;
+      white-space: pre-wrap;       /* Zeilenumbrüche in Notizen erhalten */
+      overflow-wrap: anywhere;
+      border-top: 1px dashed var(--line);
+      padding-top: 6px;
+    }
+    .book-actions { display: flex; gap: 8px; margin-top: auto; padding-top: 6px; justify-content: flex-end; }
+    .added { color: var(--muted); font-size: 0.8rem; margin-right: auto; align-self: center; }
+
+    /* Knöpfe */
+    .btn {
+      font: inherit;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      padding: 8px 14px;
+      min-height: 40px;
+      cursor: pointer;
+    }
+    .btn:hover { border-color: var(--accent); }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-dark); }
+    .btn-danger { color: var(--danger); }
+    .btn-danger:hover { border-color: var(--danger); }
+
+    /* Runder "+"-Knopf unten rechts (gut mit dem Daumen erreichbar) */
+    .fab {
+      position: fixed;
+      right: 20px;
+      bottom: calc(20px + env(safe-area-inset-bottom));
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 2rem;
+      line-height: 1;
+      box-shadow: 0 4px 12px rgba(59, 42, 31, 0.35);
+      cursor: pointer;
+      z-index: 10;
+    }
+    .fab:hover { background: var(--accent-dark); }
+
+    /* Leerer Zustand */
+    .empty { text-align: center; color: var(--muted); padding: 48px 16px; }
+    .empty h2 { color: var(--ink); font-weight: normal; }
+
+    /* Formular-Dialog: auf dem Handy als Blatt von unten, auf dem Desktop mittig */
+    dialog {
+      border: none;
+      padding: 0;
+      background: var(--surface);
+      color: var(--ink);
+      width: 100%;
+      max-width: 520px;
+      border-radius: 16px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+    dialog::backdrop { background: rgba(40, 28, 20, 0.5); }
+    @media (max-width: 599px) {
+      dialog {
+        margin: auto 0 0;          /* unten andocken */
+        max-width: 100%;
+        max-height: 92vh;
+        border-radius: 16px 16px 0 0;
+      }
+    }
+    .dialog-form { padding: 20px 16px calc(16px + env(safe-area-inset-bottom)); }
+    .dialog-form h2 { margin: 0 0 12px; font-weight: normal; }
+
+    .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+    .field label, .field legend { font-size: 0.9rem; color: var(--muted); padding: 0; }
+    .field input, .field select, .field textarea {
+      font: inherit;
+      color: inherit;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      width: 100%;
+    }
+    .field textarea { min-height: 100px; resize: vertical; }
+    fieldset.field { border: none; margin: 0 0 14px; padding: 0; }
+
+    /* Sterne-Eingabe: 5 Knöpfe, ein erneuter Klick auf denselben Stern löscht die Bewertung */
+    .star-input { display: flex; gap: 2px; align-items: center; }
+    .star-input button {
+      background: none;
+      border: none;
+      font-size: 2rem;
+      line-height: 1;
+      padding: 4px;
+      cursor: pointer;
+      color: var(--line);
+      min-width: 44px;
+      min-height: 44px;
+    }
+    .star-input button.on { color: var(--star); }
+    .star-input .hint { font-size: 0.85rem; color: var(--muted); margin-left: 8px; }
+
+    .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+    .error { color: var(--danger); font-size: 0.85rem; min-height: 1em; }
+
+    /* Kurze Bestätigungsmeldung unten (z. B. "Buch gelöscht – Rückgängig") */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(96px + env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      background: var(--header);
+      color: #f6efe4;
+      padding: 10px 16px;
+      border-radius: 10px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      z-index: 20;
+      max-width: calc(100% - 32px);
+    }
+    .toast[hidden] { display: none; }
+    .toast button {
+      background: none;
+      border: none;
+      color: #f0c987;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 4px;
+    }
+
+    .visually-hidden {
+      position: absolute; width: 1px; height: 1px; overflow: hidden;
+      clip: rect(0 0 0 0); white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ====================================================================
+       2. HTML-GERÜST
+       Die Bücherliste wird per JavaScript in <ul id="bookList"> gefüllt.
+       ==================================================================== -->
+
+  <header class="app-header">
+    <div class="header-inner">
+      <h1>📚 Meine Bücher</h1>
+      <span class="count" id="totalCount"></span>
+    </div>
+  </header>
+
+  <main>
+    <div class="toolbar">
+      <label for="search" class="visually-hidden">Suche nach Titel oder Autor</label>
+      <input id="search" class="search" type="search" placeholder="Titel oder Autor suchen …" autocomplete="off">
+      <!-- Filter-Chips werden per JavaScript erzeugt (mit Anzahl je Status) -->
+      <div class="filters" id="filters" role="group" aria-label="Nach Status filtern"></div>
+    </div>
+
+    <ul class="book-list" id="bookList" aria-live="polite"></ul>
+    <div class="empty" id="emptyState" hidden></div>
+  </main>
+
+  <button class="fab" id="addBtn" type="button" aria-label="Buch hinzufügen" title="Buch hinzufügen">+</button>
+
+  <!-- Dialog zum Hinzufügen und Bearbeiten (dasselbe Formular für beides) -->
+  <dialog id="bookDialog" aria-labelledby="dialogTitle">
+    <form class="dialog-form" id="bookForm" method="dialog" novalidate>
+      <h2 id="dialogTitle">Buch hinzufügen</h2>
+
+      <div class="field">
+        <label for="fTitle">Titel *</label>
+        <input id="fTitle" name="title" type="text" required autocomplete="off">
+      </div>
+
+      <div class="field">
+        <label for="fAuthor">Autor *</label>
+        <input id="fAuthor" name="author" type="text" required autocomplete="off">
+      </div>
+
+      <div class="field">
+        <label for="fStatus">Status</label>
+        <select id="fStatus" name="status"></select>
+      </div>
+
+      <fieldset class="field">
+        <legend>Bewertung</legend>
+        <div class="star-input" id="starInput"></div>
+      </fieldset>
+
+      <div class="field">
+        <label for="fNotes">Notizen</label>
+        <textarea id="fNotes" name="notes" placeholder="Gedanken, Zitate, Empfehlung von …"></textarea>
+      </div>
+
+      <p class="error" id="formError" role="alert"></p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="cancelBtn">Abbrechen</button>
+        <button type="submit" class="btn btn-primary" id="saveBtn">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Meldung mit "Rückgängig" nach dem Löschen -->
+  <div class="toast" id="toast" role="status" hidden>
+    <span id="toastText"></span>
+    <button type="button" id="toastUndo">Rückgängig</button>
+  </div>
+
+  <script>
+    /* ====================================================================
+       3. LOGIK
+       ==================================================================== */
+    'use strict';
+
+    // Schlüssel, unter dem die Daten im localStorage liegen.
+    // Das "v1" erlaubt später eine Umstellung des Datenformats.
+    const STORAGE_KEY = 'buecher-tracker.v1';
+
+    // Alle möglichen Status: interner Schlüssel -> angezeigter Text.
+    // Die Reihenfolge bestimmt auch die Reihenfolge der Filter-Chips.
+    const STATUSES = {
+      reading: 'Lese ich gerade',
+      want: 'Will ich lesen',
+      read: 'Gelesen',
+      dropped: 'Abgebrochen',
+    };
+
+    /* ---------- Zustand der App ---------- */
+    let books = loadBooks();     // Array aller Bücher
+    let activeFilter = 'all';    // 'all' oder ein Status-Schlüssel
+    let searchTerm = '';
+    let editingId = null;        // ID des Buchs im Bearbeiten-Dialog (null = neues Buch)
+    let formRating = 0;          // Bewertung im Formular (0 = keine)
+    let lastDeleted = null;      // für "Rückgängig" nach dem Löschen
+    let toastTimer = null;
+
+    /* ---------- Elemente aus dem HTML ---------- */
+    const $ = (id) => document.getElementById(id);
+    const els = {
+      list: $('bookList'),
+      empty: $('emptyState'),
+      search: $('search'),
+      filters: $('filters'),
+      total: $('totalCount'),
+      dialog: $('bookDialog'),
+      form: $('bookForm'),
+      dialogTitle: $('dialogTitle'),
+      title: $('fTitle'),
+      author: $('fAuthor'),
+      status: $('fStatus'),
+      notes: $('fNotes'),
+      stars: $('starInput'),
+      error: $('formError'),
+      toast: $('toast'),
+      toastText: $('toastText'),
+      toastUndo: $('toastUndo'),
+    };
+
+    /* ====================================================================
+       Speichern & Laden (localStorage)
+       ==================================================================== */
+
+    /** Liest die Bücher aus dem localStorage. Bei Fehlern: leere Liste. */
+    function loadBooks() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        const data = raw ? JSON.parse(raw) : [];
+        return Array.isArray(data) ? data : [];
+      } catch (err) {
+        console.error('Konnte Bücher nicht laden:', err);
+        return [];
+      }
+    }
+
+    /** Schreibt alle Bücher in den localStorage. */
+    function saveBooks() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
+      } catch (err) {
+        // z. B. privater Modus in manchen Browsern oder Speicher voll
+        console.error('Konnte Bücher nicht speichern:', err);
+        alert('Achtung: Die Daten konnten nicht gespeichert werden. ' +
+              'Ist der Browser im privaten Modus?');
+      }
+    }
+
+    /** Erzeugt eine eindeutige ID für ein neues Buch. */
+    function newId() {
+      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+      return Date.now().toString(36) + Math.random().toString(36).slice(2);
+    }
+
+    /* ====================================================================
+       Daten ändern: hinzufügen, bearbeiten, löschen
+       ==================================================================== */
+
+    /**
+     * Legt ein neues Buch an.
+     * Die Felder isbn, genre, pages, startDate, endDate und coverUrl sind schon
+     * vorgesehen (für die "Kann"-Funktionen später), werden aber noch nicht genutzt.
+     */
+    function addBook({ title, author, status, rating, notes }) {
+      books.unshift({
+        id: newId(),
+        title,
+        author,
+        status,
+        rating,               // 0 = keine Bewertung, sonst 1–5
+        notes,
+        addedAt: new Date().toISOString(),
+        // Für später vorgesehen:
+        isbn: '',
+        genre: '',
+        pages: null,
+        startDate: null,
+        endDate: null,
+        coverUrl: '',
+      });
+      saveBooks();
+    }
+
+    /** Übernimmt geänderte Felder in ein bestehendes Buch. */
+    function updateBook(id, changes) {
+      const book = books.find((b) => b.id === id);
+      if (!book) return;
+      Object.assign(book, changes);
+      saveBooks();
+    }
+
+    /** Löscht ein Buch und merkt es sich kurz für "Rückgängig". */
+    function deleteBook(id) {
+      const index = books.findIndex((b) => b.id === id);
+      if (index === -1) return;
+      lastDeleted = { book: books[index], index };
+      books.splice(index, 1);
+      saveBooks();
+      render();
+      showToast(`„${lastDeleted.book.title}" gelöscht`);
+    }
+
+    /** Stellt das zuletzt gelöschte Buch an seiner alten Position wieder her. */
+    function undoDelete() {
+      if (!lastDeleted) return;
+      books.splice(lastDeleted.index, 0, lastDeleted.book);
+      lastDeleted = null;
+      saveBooks();
+      hideToast();
+      render();
+    }
+
+    /* ====================================================================
+       Anzeige (Rendering)
+       ==================================================================== */
+
+    /** Text für Vergleiche vereinfachen: Kleinbuchstaben, Akzente entfernen. */
+    function normalize(text) {
+      return (text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, ''); // "é" -> "e", "ü" -> "u"
+    }
+
+    /** Liefert die Bücher, die zu Filter und Suche passen. */
+    function visibleBooks() {
+      const term = normalize(searchTerm.trim());
+      return books.filter((b) => {
+        if (activeFilter !== 'all' && b.status !== activeFilter) return false;
+        if (!term) return true;
+        return normalize(b.title).includes(term) || normalize(b.author).includes(term);
+      });
+    }
+
+    /** Baut die Filter-Chips inkl. Anzahl der Bücher je Status. */
+    function renderFilters() {
+      const counts = { all: books.length };
+      for (const key of Object.keys(STATUSES)) counts[key] = 0;
+      for (const b of books) counts[b.status] = (counts[b.status] || 0) + 1;
+
+      const options = [['all', 'Alle'], ...Object.entries(STATUSES)];
+      els.filters.innerHTML = '';
+      for (const [key, label] of options) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'chip';
+        chip.dataset.filter = key;
+        chip.setAttribute('aria-pressed', String(key === activeFilter));
+        chip.textContent = label;
+        const n = document.createElement('span');
+        n.className = 'n';
+        n.textContent = counts[key];
+        chip.appendChild(n);
+        els.filters.appendChild(chip);
+      }
+    }
+
+    /** Sterne als Text, z. B. ★★★☆☆ (leere Sterne heller). */
+    function starsElement(rating) {
+      const span = document.createElement('span');
+      span.className = 'stars-display';
+      span.setAttribute('aria-label', `${rating} von 5 Sternen`);
+      span.textContent = '★'.repeat(rating);
+      const off = document.createElement('span');
+      off.className = 'off';
+      off.textContent = '★'.repeat(5 - rating);
+      span.appendChild(off);
+      return span;
+    }
+
+    /** Erzeugt die Karte für ein einzelnes Buch. */
+    function bookCard(book) {
+      // Hinweis: Alle Texte werden per textContent gesetzt, nie per innerHTML.
+      // So kann ein Titel wie "<b>" die Seite nicht durcheinanderbringen.
+      const li = document.createElement('li');
+      li.className = 'book';
+      li.dataset.status = book.status;
+      li.dataset.id = book.id;
+
+      const title = document.createElement('h3');
+      title.className = 'book-title';
+      title.textContent = book.title;
+
+      const author = document.createElement('p');
+      author.className = 'book-author';
+      author.textContent = book.author;
+
+      const meta = document.createElement('div');
+      meta.className = 'book-meta';
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = STATUSES[book.status] || book.status;
+      meta.appendChild(badge);
+      if (book.rating > 0) meta.appendChild(starsElement(book.rating));
+
+      li.append(title, author, meta);
+
+      if (book.notes) {
+        const notes = document.createElement('p');
+        notes.className = 'book-notes';
+        notes.textContent = book.notes;
+        li.appendChild(notes);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'book-actions';
+      const added = document.createElement('span');
+      added.className = 'added';
+      added.textContent = 'Hinzugefügt am ' +
+        new Date(book.addedAt).toLocaleDateString('de-DE');
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'btn';
+      editBtn.dataset.action = 'edit';
+      editBtn.textContent = 'Bearbeiten';
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn btn-danger';
+      delBtn.dataset.action = 'delete';
+      delBtn.textContent = 'Löschen';
+      actions.append(added, editBtn, delBtn);
+      li.appendChild(actions);
+
+      return li;
+    }
+
+    /** Zeichnet Filter, Liste und Zähler neu. Wird nach jeder Änderung aufgerufen. */
+    function render() {
+      renderFilters();
+      els.total.textContent = books.length === 1 ? '1 Buch' : `${books.length} Bücher`;
+
+      const list = visibleBooks();
+      els.list.innerHTML = '';
+      for (const book of list) els.list.appendChild(bookCard(book));
+
+      // Hinweis anzeigen, wenn nichts zu sehen ist
+      if (list.length === 0) {
+        els.empty.hidden = false;
+        if (books.length === 0) {
+          els.empty.innerHTML =
+            '<h2>Dein Regal ist noch leer</h2>' +
+            '<p>Tippe auf <strong>+</strong>, um dein erstes Buch hinzuzufügen.</p>';
+        } else {
+          els.empty.innerHTML = '<p>Keine Bücher gefunden.</p>';
+        }
+      } else {
+        els.empty.hidden = true;
+      }
+    }
+
+    /* ====================================================================
+       Formular-Dialog (Hinzufügen / Bearbeiten)
+       ==================================================================== */
+
+    // Status-Auswahl im Formular einmalig befüllen
+    for (const [key, label] of Object.entries(STATUSES)) {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = label;
+      els.status.appendChild(opt);
+    }
+
+    // Fünf Stern-Knöpfe für die Bewertung anlegen
+    for (let i = 1; i <= 5; i++) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.dataset.value = i;
+      btn.textContent = '★';
+      btn.setAttribute('aria-label', `${i} ${i === 1 ? 'Stern' : 'Sterne'}`);
+      els.stars.appendChild(btn);
+    }
+    const starHint = document.createElement('span');
+    starHint.className = 'hint';
+    els.stars.appendChild(starHint);
+
+    /** Hebt die Sterne im Formular passend zur aktuellen Bewertung hervor. */
+    function paintStars() {
+      els.stars.querySelectorAll('button').forEach((btn) => {
+        const on = Number(btn.dataset.value) <= formRating;
+        btn.classList.toggle('on', on);
+        btn.setAttribute('aria-pressed', String(Number(btn.dataset.value) === formRating));
+      });
+      starHint.textContent = formRating ? '' : 'keine';
+    }
+
+    /** Öffnet den Dialog – leer für ein neues Buch oder befüllt zum Bearbeiten. */
+    function openDialog(book = null) {
+      editingId = book ? book.id : null;
+      els.dialogTitle.textContent = book ? 'Buch bearbeiten' : 'Buch hinzufügen';
+      els.title.value = book ? book.title : '';
+      els.author.value = book ? book.author : '';
+      // Neues Buch: Status vom aktiven Filter übernehmen, sonst "Will ich lesen"
+      els.status.value = book ? book.status
+        : (activeFilter !== 'all' ? activeFilter : 'want');
+      els.notes.value = book ? book.notes : '';
+      formRating = book ? book.rating : 0;
+      els.error.textContent = '';
+      paintStars();
+      els.dialog.showModal();
+      // Auf dem Handy nur bei neuen Büchern direkt die Tastatur öffnen
+      if (!book) els.title.focus();
+    }
+
+    function closeDialog() {
+      els.dialog.close();
+      editingId = null;
+    }
+
+    /** Prüft das Formular und speichert das Buch. */
+    function submitForm(event) {
+      event.preventDefault();
+      const data = {
+        title: els.title.value.trim(),
+        author: els.author.value.trim(),
+        status: els.status.value,
+        rating: formRating,
+        notes: els.notes.value.trim(),
+      };
+
+      if (!data.title || !data.author) {
+        els.error.textContent = 'Bitte Titel und Autor ausfüllen.';
+        (data.title ? els.author : els.title).focus();
+        return;
+      }
+
+      if (editingId) updateBook(editingId, data);
+      else addBook(data);
+
+      closeDialog();
+      render();
+    }
+
+    /* ====================================================================
+       Kurze Meldung (Toast)
+       ==================================================================== */
+
+    function showToast(text) {
+      els.toastText.textContent = text;
+      els.toast.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(hideToast, 6000);
+    }
+
+    function hideToast() {
+      els.toast.hidden = true;
+      lastDeleted = null;
+    }
+
+    /* ====================================================================
+       Ereignisse (Klicks, Eingaben)
+       ==================================================================== */
+
+    $('addBtn').addEventListener('click', () => openDialog());
+    $('cancelBtn').addEventListener('click', closeDialog);
+    els.form.addEventListener('submit', submitForm);
+    els.toastUndo.addEventListener('click', undoDelete);
+
+    // Klick auf den abgedunkelten Hintergrund schließt den Dialog
+    els.dialog.addEventListener('click', (e) => {
+      if (e.target === els.dialog) closeDialog();
+    });
+
+    // Sterne: Klick setzt die Bewertung, erneuter Klick auf denselben Stern entfernt sie
+    els.stars.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const value = Number(btn.dataset.value);
+      formRating = formRating === value ? 0 : value;
+      paintStars();
+    });
+
+    // Suche: Liste bei jeder Eingabe aktualisieren
+    els.search.addEventListener('input', () => {
+      searchTerm = els.search.value;
+      render();
+    });
+
+    // Filter-Chips (ein Listener für alle Chips)
+    els.filters.addEventListener('click', (e) => {
+      const chip = e.target.closest('.chip');
+      if (!chip) return;
+      activeFilter = chip.dataset.filter;
+      render();
+    });
+
+    // Bearbeiten/Löschen-Knöpfe in den Karten (ein Listener für die ganze Liste)
+    els.list.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const id = btn.closest('.book').dataset.id;
+      const book = books.find((b) => b.id === id);
+      if (!book) return;
+      if (btn.dataset.action === 'edit') openDialog(book);
+      if (btn.dataset.action === 'delete') {
+        if (confirm(`„${book.title}" wirklich löschen?`)) deleteBook(id);
+      }
+    });
+
+    // Änderungen aus einem anderen Tab übernehmen (gleicher Browser)
+    window.addEventListener('storage', (e) => {
+      if (e.key === STORAGE_KEY) {
+        books = loadBooks();
+        render();
+      }
+    });
+
+    // Los geht's
+    render();
+  </script>
+</body>
+</html>
