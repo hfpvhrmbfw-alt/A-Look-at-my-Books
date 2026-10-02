@@ -230,7 +230,9 @@
       background: var(--surface);
       color: var(--ink);
       width: 100%;
-      max-width: 520px;
+      max-width: 560px;
+      max-height: 92vh;
+      overflow-y: auto;
       border-radius: 16px;
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
     }
@@ -276,6 +278,36 @@
     }
     .star-input button.on { color: var(--star); }
     .star-input .hint { font-size: 0.85rem; color: var(--muted); margin-left: 8px; }
+
+    /* Ansicht-Umschalter (Leseliste / Archiv / Alle) */
+    .tabs { display: flex; gap: 4px; margin-bottom: 10px; background: var(--line); border-radius: 12px; padding: 3px; }
+    .tab {
+      flex: 1; border: none; background: none; font: inherit; color: var(--ink);
+      padding: 8px 4px; border-radius: 10px; cursor: pointer; min-height: 40px;
+      font-size: 0.9rem; white-space: nowrap;
+    }
+    .tab[aria-selected="true"] { background: var(--surface); box-shadow: 0 1px 2px rgba(59, 42, 31, 0.15); font-weight: 600; }
+    .filters + .filters { padding-top: 2px; }
+    .chip-format[aria-pressed="true"] { background: var(--header); border-color: var(--header); }
+
+    /* Formular: zwei Felder nebeneinander, einklappbare Abschnitte */
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+    .field-hint { font-size: 0.85rem; color: var(--muted); margin: 0; min-height: 1em; }
+    .field-hint.bad { color: var(--danger); }
+    details.section { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; background: #fff; }
+    details.section > summary { padding: 12px; cursor: pointer; font-weight: 600; min-height: 44px; }
+    details.section > summary .hint-inline { font-weight: normal; color: var(--muted); }
+    .section-body { padding: 0 12px 4px; }
+    .checks-label { font-size: 0.9rem; color: var(--muted); }
+    .checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+    .checks label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 0.95rem; min-height: 32px; }
+    .checks input { width: auto; }
+
+    /* Kleine Zusatzangaben auf der Karte */
+    .badge-format { background: none; color: var(--ink); border: 1px solid var(--line); }
+    .book-sub { color: var(--muted); font-size: 0.9rem; margin: -4px 0 0; overflow-wrap: anywhere; }
+    .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .tag { font-size: 0.75rem; border-radius: 6px; padding: 1px 6px; background: var(--bg); color: var(--muted); }
 
     .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
     .error { color: var(--danger); font-size: 0.85rem; min-height: 1em; }
@@ -330,10 +362,13 @@
 
   <main>
     <div class="toolbar">
-      <label for="search" class="visually-hidden">Suche nach Titel oder Autor</label>
-      <input id="search" class="search" type="search" placeholder="Titel oder Autor suchen …" autocomplete="off">
-      <!-- Filter-Chips werden per JavaScript erzeugt (mit Anzahl je Status) -->
+      <!-- Ansicht: offene Bücher (Leseliste), Archiv (Gelesen/Abgebrochen) oder alle -->
+      <div class="tabs" id="views" role="tablist" aria-label="Ansicht"></div>
+      <label for="search" class="visually-hidden">Suche nach Titel, Autor:in, Reihe oder ISBN</label>
+      <input id="search" class="search" type="search" placeholder="Titel, Autor:in, Reihe oder ISBN suchen …" autocomplete="off">
+      <!-- Filter-Chips werden per JavaScript erzeugt (mit Anzahl je Status bzw. Format) -->
       <div class="filters" id="filters" role="group" aria-label="Nach Status filtern"></div>
+      <div class="filters" id="formatFilters" role="group" aria-label="Nach Format filtern"></div>
     </div>
 
     <ul class="book-list" id="bookList" aria-live="polite"></ul>
@@ -342,10 +377,18 @@
 
   <button class="fab" id="addBtn" type="button" aria-label="Buch hinzufügen" title="Buch hinzufügen">+</button>
 
-  <!-- Dialog zum Hinzufügen und Bearbeiten (dasselbe Formular für beides) -->
+  <!-- Dialog zum Hinzufügen und Bearbeiten (dasselbe Formular für beides).
+       Die einklappbaren Abschnitte (Werk, Ausgaben, Besonderheiten) werden per JavaScript
+       aus den Feldlisten in js/app.js erzeugt. -->
   <dialog id="bookDialog" aria-labelledby="dialogTitle">
     <form class="dialog-form" id="bookForm" method="dialog" novalidate>
       <h2 id="dialogTitle">Buch hinzufügen</h2>
+
+      <div class="field">
+        <label for="fIsbn">ISBN <span class="hint-inline">(vom Einband oder Impressum)</span></label>
+        <input id="fIsbn" type="text" inputmode="numeric" autocomplete="off" placeholder="z. B. 978-3-…">
+        <p class="field-hint" id="fIsbnHint"></p>
+      </div>
 
       <div class="field">
         <label for="fTitle">Titel *</label>
@@ -353,13 +396,28 @@
       </div>
 
       <div class="field">
-        <label for="fAuthor">Autor:in * <span class="hint-inline">(mehrere mit ; trennen)</span></label>
-        <input id="fAuthor" name="author" type="text" required autocomplete="off">
+        <label for="fAuthor">Autor:in <span class="hint-inline">(mehrere mit ; trennen)</span></label>
+        <input id="fAuthor" name="author" type="text" autocomplete="off">
       </div>
 
-      <div class="field">
-        <label for="fStatus">Status</label>
-        <select id="fStatus" name="status"></select>
+      <div class="field-row">
+        <div class="field">
+          <label for="fStatus">Status</label>
+          <select id="fStatus" name="status"></select>
+        </div>
+        <div class="field">
+          <label for="fOwnership">Besitze ich als</label>
+          <select id="fOwnership" name="ownership"></select>
+        </div>
+      </div>
+
+      <div class="field" id="currentFormatField" hidden>
+        <label for="fCurrentFormat">Ich lese gerade als</label>
+        <select id="fCurrentFormat">
+          <option value="">–</option>
+          <option value="print">Print</option>
+          <option value="ebook">E-Book</option>
+        </select>
       </div>
 
       <fieldset class="field">
@@ -371,6 +429,28 @@
         <label for="fNotes">Notizen</label>
         <textarea id="fNotes" name="notes" placeholder="Gedanken, Zitate, Empfehlung von …"></textarea>
       </div>
+
+      <div class="field">
+        <label for="fTags">Tags <span class="hint-inline">(mit Komma trennen)</span></label>
+        <input id="fTags" type="text" autocomplete="off" placeholder="z. B. Urlaub, Lesekreis">
+      </div>
+
+      <details class="section" id="secWork">
+        <summary>Werk <span class="hint-inline">Untertitel, Original, Reihe, Genres …</span></summary>
+        <div class="section-body" id="workFields"></div>
+      </details>
+      <details class="section" id="secPrint">
+        <summary id="secPrintTitle">Meine Ausgabe (Print)</summary>
+        <div class="section-body" id="printFields"></div>
+      </details>
+      <details class="section" id="secEbook">
+        <summary>Meine Ausgabe (E-Book)</summary>
+        <div class="section-body" id="ebookFields"></div>
+      </details>
+      <details class="section" id="secSpecial">
+        <summary>Besondere Ausgabe <span class="hint-inline">Erstausgabe, signiert, Zustand …</span></summary>
+        <div class="section-body" id="specialFields"></div>
+      </details>
 
       <p class="error" id="formError" role="alert"></p>
 
@@ -390,6 +470,7 @@
   <!-- Logik: reine Funktionen (testbar mit "npm test") und die App-Oberfläche -->
   <script src="js/isbn.js"></script>
   <script src="js/model.js"></script>
+  <script src="js/list.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

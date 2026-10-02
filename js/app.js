@@ -1,18 +1,23 @@
 /* ====================================================================
-   3. LOGIK
+   3. LOGIK (Oberfläche)
+   Reine Logik ohne DOM liegt in eigenen Dateien und ist getestet:
+     js/isbn.js  – ISBN prüfen und umrechnen
+     js/model.js – Datenmodell (Werk, Ausgabe, Eintrag), Migration, Laden
+     js/list.js  – Filtern der Leseliste
    ==================================================================== */
 'use strict';
 
-// Datenmodell, Status und Migration stehen in js/model.js, die ISBN-Logik in js/isbn.js.
 const STORAGE_KEY = Model.KEYS.v2;
 const STATUSES = Model.STATUSES;
 
 /* ---------- Zustand der App ---------- */
 let loadFailed = false;      // true, wenn gespeicherte Daten unlesbar waren
 let state = loadState();     // { works, editions, entries, settings }, siehe model.js
+let activeView = 'open';     // 'open' (Leseliste), 'archive' oder 'all', siehe List.VIEWS
 let activeFilter = 'all';    // 'all' oder ein Status-Schlüssel
+let activeFormat = 'all';    // Schlüssel aus List.FORMAT_FILTERS
 let searchTerm = '';
-let editingId = null;        // ID des Buchs im Bearbeiten-Dialog (null = neues Buch)
+let editingId = null;        // ID des Eintrags im Bearbeiten-Dialog (null = neues Buch)
 let formRating = 0;          // Sterne im Formular (0 = keine): Priorität bzw. Bewertung nach dem Lesen
 let lastDeleted = null;      // für "Rückgängig" nach dem Löschen
 let toastTimer = null;
@@ -23,17 +28,29 @@ const els = {
   list: $('bookList'),
   empty: $('emptyState'),
   search: $('search'),
+  views: $('views'),
   filters: $('filters'),
+  formatFilters: $('formatFilters'),
   total: $('totalCount'),
   dialog: $('bookDialog'),
   form: $('bookForm'),
   dialogTitle: $('dialogTitle'),
+  isbn: $('fIsbn'),
+  isbnHint: $('fIsbnHint'),
   title: $('fTitle'),
   author: $('fAuthor'),
   status: $('fStatus'),
+  ownership: $('fOwnership'),
+  currentFormatField: $('currentFormatField'),
+  currentFormat: $('fCurrentFormat'),
   notes: $('fNotes'),
+  tags: $('fTags'),
   stars: $('starInput'),
   ratingLabel: $('ratingLabel'),
+  secPrint: $('secPrint'),
+  secPrintTitle: $('secPrintTitle'),
+  secEbook: $('secEbook'),
+  secSpecial: $('secSpecial'),
   error: $('formError'),
   toast: $('toast'),
   toastText: $('toastText'),
@@ -78,12 +95,209 @@ function saveState() {
 }
 
 /* ====================================================================
-   Daten ändern: hinzufügen, bearbeiten, löschen
-   Ein "Buch" in der Liste ist ein Eintrag (entry) mit seinem Werk (work)
-   und den Ausgaben (editions), die ich besitze – siehe js/model.js.
+   Formularfelder für Werk, Ausgaben und Besonderheiten
+   Jede Zeile: [Feldname, Beschriftung, Typ, Zusatz]. Typen:
+     text, number, textarea, date, list (Liste mit Trennzeichen), suggest (Text mit Vorschlägen)
    ==================================================================== */
 
-/** Eintrag mit Werk und Ausgaben als flaches Objekt für Anzeige, Filter und Suche. */
+const WORK_FIELDS = [
+  ['subtitle', 'Untertitel', 'text'],
+  ['originalTitle', 'Originaltitel', 'text'],
+  ['originalLanguage', 'Originalsprache', 'text'],
+  ['year', 'Erscheinungsjahr des Werks', 'number'],
+  ['series', 'Reihe', 'text'],
+  ['seriesNumber', 'Band', 'text'],
+  ['genres', 'Genres/Themen (mit Komma trennen)', 'list', ','],
+  ['description', 'Beschreibung/Klappentext', 'textarea'],
+];
+
+const EDITION_COMMON = [
+  ['publisher', 'Verlag', 'text'],
+  ['year', 'Erscheinungsjahr der Ausgabe', 'number'],
+  ['printing', 'Auflage', 'text'],
+  ['pages', 'Seitenzahl', 'number'],
+  ['language', 'Sprache der Ausgabe', 'text'],
+  ['translators', 'Übersetzer:in (mehrere mit ; trennen)', 'list', ';'],
+  ['editors', 'Herausgeber:in', 'list', ';'],
+  ['illustrators', 'Illustrator:in', 'list', ';'],
+  ['forewordBy', 'Vor-/Nachwort von', 'text'],
+];
+
+const PRINT_FIELDS = [
+  ['binding', 'Einband', 'suggest', ['Hardcover', 'Taschenbuch', 'Klappenbroschur', 'Paperback', 'Leinen', 'Broschur']],
+  ...EDITION_COMMON,
+];
+
+const EBOOK_FIELDS = [
+  ['isbn', 'ISBN des E-Books', 'isbn'],
+  ['ebookFormat', 'Dateiformat', 'suggest', ['EPUB', 'PDF', 'Kindle (AZW/KFX)', 'MOBI']],
+  ['ebookPlatform', 'Speicherort/Plattform', 'suggest', ['Kindle', 'Tolino', 'Kobo', 'Apple Books', 'Google Play Books', 'Onleihe', 'Calibre']],
+  ...EDITION_COMMON,
+];
+
+const SPECIAL_KINDS = {
+  erstausgabe: 'Erstausgabe',
+  sonderausgabe: 'Sonderausgabe',
+  limitiert: 'limitiert',
+  nummeriert: 'nummeriert',
+  signiert: 'signiert',
+  reprint: 'Reprint',
+  antiquariat: 'Antiquariat',
+};
+
+const SPECIAL_FIELDS = [
+  ['kinds', 'Art der Besonderheit', 'checks', SPECIAL_KINDS],
+  ['number', 'Auflagen-/Exemplarnummer', 'text'],
+  ['publisherSeries', 'Edition/Reihe des Verlags (z. B. Schmuckausgabe)', 'text'],
+  ['condition', 'Zustand', 'suggest', ['wie neu', 'sehr gut', 'gut', 'mit Gebrauchsspuren', 'beschädigt']],
+  ['acquiredFrom', 'Erworben bei', 'text'],
+  ['acquiredAt', 'Erworben am', 'date'],
+  ['notes', 'Besonderheiten (Widmung, Lesebändchen, Schuber, Farbschnitt …)', 'textarea'],
+];
+
+/** Erzeugt die Eingabefelder eines Abschnitts. IDs: `${prefix}-${feld}`. */
+function buildFields(container, prefix, specs) {
+  for (const [key, label, type, extra] of specs) {
+    const id = `${prefix}-${key}`;
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    if (type === 'checks') {
+      const legend = el('span', 'checks-label', label);
+      const box = document.createElement('div');
+      box.className = 'checks';
+      box.id = id;
+      for (const [value, text] of Object.entries(extra)) {
+        const l = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = value;
+        l.append(cb, text);
+        box.appendChild(l);
+      }
+      wrap.append(legend, box);
+      container.appendChild(wrap);
+      continue;
+    }
+    const lab = document.createElement('label');
+    lab.htmlFor = id;
+    lab.textContent = label;
+    let input;
+    if (type === 'textarea') {
+      input = document.createElement('textarea');
+    } else {
+      input = document.createElement('input');
+      input.type = type === 'number' ? 'number' : type === 'date' ? 'date' : 'text';
+      if (type === 'number') input.inputMode = 'numeric';
+      if (type === 'isbn') input.inputMode = 'numeric';
+      input.autocomplete = 'off';
+      if (type === 'suggest') {
+        const dl = document.createElement('datalist');
+        dl.id = `${id}-list`;
+        for (const v of extra) {
+          const o = document.createElement('option');
+          o.value = v;
+          dl.appendChild(o);
+        }
+        input.setAttribute('list', dl.id);
+        wrap.appendChild(dl);
+      }
+    }
+    input.id = id;
+    wrap.prepend(lab);
+    wrap.appendChild(input);
+    if (type === 'isbn') {
+      const hint = document.createElement('p');
+      hint.className = 'field-hint';
+      hint.id = `${id}-hint`;
+      wrap.appendChild(hint);
+      input.addEventListener('blur', () => showIsbnHint(input, hint));
+    }
+    container.appendChild(wrap);
+  }
+}
+
+/** Wert eines Datenfelds ins Formular schreiben. */
+function fillFields(prefix, specs, obj) {
+  for (const [key, , type, extra] of specs) {
+    const el = $(`${prefix}-${key}`);
+    if (type === 'checks') {
+      const values = (obj && obj[key]) || [];
+      el.querySelectorAll('input').forEach((cb) => { cb.checked = values.includes(cb.value); });
+    } else if (type === 'isbn') {
+      el.value = obj ? (obj.isbn13 || obj.isbn10 || '') : '';
+      showIsbnHint(el, $(`${el.id}-hint`));
+    } else if (type === 'list') {
+      el.value = obj && obj[key] ? obj[key].join(extra === ';' ? '; ' : ', ') : '';
+    } else {
+      const v = obj ? obj[key] : null;
+      el.value = v == null ? '' : v;
+    }
+  }
+}
+
+/** Werte eines Abschnitts aus dem Formular lesen (ISBN getrennt, siehe readIsbn). */
+function readFields(prefix, specs) {
+  const out = {};
+  for (const [key, , type, extra] of specs) {
+    const el = $(`${prefix}-${key}`);
+    if (type === 'checks') {
+      out[key] = [...el.querySelectorAll('input:checked')].map((cb) => cb.value);
+    } else if (type === 'isbn') {
+      continue;
+    } else if (type === 'list') {
+      out[key] = el.value.split(extra).map((s) => s.trim()).filter(Boolean);
+    } else if (type === 'number') {
+      const n = parseInt(el.value, 10);
+      out[key] = Number.isFinite(n) && n > 0 ? n : null;
+    } else if (type === 'date') {
+      out[key] = el.value || null;
+    } else {
+      out[key] = el.value.trim();
+    }
+  }
+  return out;
+}
+
+/** Hat ein gelesener Abschnitt überhaupt Inhalt? */
+function hasContent(values) {
+  return Object.values(values).some((v) => (Array.isArray(v) ? v.length : v != null && v !== ''));
+}
+
+/**
+ * Übernimmt Werte in eine Entität. Nur tatsächlich geänderte Felder werden gesetzt
+ * und als manuelle Angabe (mit Datum) vermerkt – das ist die Herkunft pro Feld.
+ */
+function assignManual(entity, values, at) {
+  for (const [key, value] of Object.entries(values)) {
+    if (JSON.stringify(entity[key]) === JSON.stringify(value)) continue;
+    entity[key] = value;
+    Model.setSource(entity, key, 'manual', at);
+  }
+}
+
+/** Zeigt unter einem ISBN-Feld die erkannte ISBN-10/-13 oder einen Fehler. */
+function showIsbnHint(input, hint) {
+  const parsed = Isbn.parse(input.value);
+  hint.classList.toggle('bad', !parsed.valid);
+  if (!parsed.valid) hint.textContent = parsed.error;
+  else if (parsed.isbn13) {
+    hint.textContent = 'ISBN-13: ' + parsed.isbn13 + (parsed.isbn10 ? ' · ISBN-10: ' + parsed.isbn10 : '');
+  } else hint.textContent = '';
+  return parsed;
+}
+
+buildFields($('workFields'), 'w', WORK_FIELDS);
+buildFields($('printFields'), 'p', PRINT_FIELDS);
+buildFields($('ebookFields'), 'e', EBOOK_FIELDS);
+buildFields($('specialFields'), 's', SPECIAL_FIELDS);
+
+/* ====================================================================
+   Daten ändern: hinzufügen, bearbeiten, löschen
+   Ein "Buch" in der Liste ist ein Eintrag (entry) mit seinem Werk (work)
+   und seinen Ausgaben (editions) – siehe js/model.js.
+   ==================================================================== */
+
+/** Eintrag mit Werk und Ausgaben als Objekt für Anzeige, Filter und Suche. */
 function bookView(entry) {
   const { work, editions } = Model.resolve(state, entry);
   return {
@@ -96,8 +310,6 @@ function bookView(entry) {
     status: entry.status,
     // Sterne: bei Gelesen/Abgebrochen die Bewertung nach dem Lesen, sonst die Priorität
     rating: (isRatingAfterReading(entry.status) ? entry.finalRating : entry.priority) || 0,
-    notes: entry.notes,
-    addedAt: entry.addedAt,
   };
 }
 
@@ -110,30 +322,93 @@ function isRatingAfterReading(status) {
   return status === 'read' || status === 'dropped';
 }
 
-/** Schreibt die Formularwerte in Werk und Eintrag und vermerkt sie als manuelle Angaben. */
-function applyForm(work, entry, { title, author, status, rating, notes }) {
+/** Die Ausgabe eines bestimmten Formats zu einem Eintrag (zuerst die eigenen, dann die des Werks). */
+function editionFor(entry, format) {
+  const own = entry.editionIds
+    .map((id) => state.editions.find((e) => e.id === id))
+    .find((e) => e && e.format === format);
+  return own || state.editions.find((e) => e.workId === entry.workId && e.format === format) || null;
+}
+
+/** Welche Ausgabe-Formate zeigt das Formular bei diesem Besitzformat? */
+function formatsFor(ownership) {
+  if (ownership === 'ebook') return ['ebook'];
+  if (ownership === 'both') return ['print', 'ebook'];
+  return ['print']; // Print, noch nicht besessen oder unbekannt: eine (gewünschte) Ausgabe
+}
+
+/** Hauptausgabe: an ihr hängen die ISBN oben im Formular und die Besonderheiten. */
+function primaryFormat(ownership) {
+  return ownership === 'ebook' ? 'ebook' : 'print';
+}
+
+/** Liest das ganze Formular in ein Datenobjekt. */
+function readForm() {
+  const ownership = els.ownership.value || null;
+  return {
+    isbn: Isbn.parse(els.isbn.value),
+    ebookIsbn: Isbn.parse($('e-isbn').value),
+    title: els.title.value.trim(),
+    authors: els.author.value.split(';').map((a) => a.trim()).filter(Boolean),
+    status: els.status.value,
+    ownership,
+    currentFormat: ownership === 'both' ? (els.currentFormat.value || null) : null,
+    rating: formRating || null,
+    notes: els.notes.value.trim(),
+    tags: Model.splitList(els.tags.value),
+    work: readFields('w', WORK_FIELDS),
+    print: readFields('p', PRINT_FIELDS),
+    ebook: readFields('e', EBOOK_FIELDS),
+    special: readFields('s', SPECIAL_FIELDS),
+  };
+}
+
+/** Schreibt die Formularwerte in Werk, Ausgaben und Eintrag. */
+function applyForm(entry, data) {
   const at = new Date().toISOString();
-  // Mehrere Autor:innen werden mit ";" getrennt (ein Komma kann Teil des Namens sein)
-  const authors = author.split(';').map((a) => a.trim()).filter(Boolean);
-  if (work.title !== title) { work.title = title; Model.setSource(work, 'title', 'manual', at); }
-  if (work.authors.join('; ') !== authors.join('; ')) {
-    work.authors = authors;
-    Model.setSource(work, 'authors', 'manual', at);
+  const work = Model.resolve(state, entry).work;
+
+  assignManual(work, Object.assign({ title: data.title, authors: data.authors }, data.work), at);
+  assignManual(entry, {
+    status: data.status,
+    ownership: data.ownership,
+    currentFormat: data.currentFormat,
+    notes: data.notes,
+    tags: data.tags,
+  }, at);
+  if (isRatingAfterReading(data.status)) entry.finalRating = data.rating;
+  else entry.priority = data.rating;
+
+  // Ausgaben: je gezeigtem Format anlegen/aktualisieren, sobald etwas eingetragen ist
+  const primary = primaryFormat(data.ownership);
+  const editionIds = [];
+  for (const format of formatsFor(data.ownership)) {
+    const parsed = format === primary ? data.isbn : data.ebookIsbn;
+    const values = Object.assign({}, data[format], { isbn10: parsed.isbn10, isbn13: parsed.isbn13 });
+    const hasSpecial = format === primary && hasContent(data.special);
+    let edition = editionFor(entry, format);
+    if (!edition && !hasContent(values) && !hasSpecial) continue;
+    if (format === primary) values.special = data.special;
+    if (!edition) {
+      edition = Model.createEdition({ workId: work.id, format });
+      state.editions.push(edition);
+    }
+    if (values.special) values.special = Object.assign({}, edition.special, values.special);
+    assignManual(edition, values, at);
+    editionIds.push(edition.id);
   }
-  if (entry.status !== status) { entry.status = status; Model.setSource(entry, 'status', 'manual', at); }
-  if (entry.notes !== notes) { entry.notes = notes; Model.setSource(entry, 'notes', 'manual', at); }
-  const value = rating || null;
-  if (isRatingAfterReading(status)) entry.finalRating = value;
-  else entry.priority = value;
+  // Ausgaben eines nicht mehr gewählten Formats bleiben beim Werk gespeichert,
+  // gehören aber nicht mehr zu "meinen" Ausgaben.
+  entry.editionIds = editionIds;
 }
 
 /** Legt ein neues Buch (Werk + Eintrag) an. */
 function addBook(data) {
   const work = Model.createWork();
   const entry = Model.createEntry({ workId: work.id });
-  applyForm(work, entry, data);
   state.works.push(work);
   state.entries.unshift(entry);
+  applyForm(entry, data);
   saveState();
 }
 
@@ -141,7 +416,7 @@ function addBook(data) {
 function updateBook(id, data) {
   const entry = state.entries.find((e) => e.id === id);
   if (!entry) return;
-  applyForm(Model.resolve(state, entry).work, entry, data);
+  applyForm(entry, data);
   saveState();
 }
 
@@ -150,7 +425,8 @@ function deleteBook(id) {
   const index = state.entries.findIndex((e) => e.id === id);
   if (index === -1) return;
   const entry = state.entries[index];
-  const { work, editions } = Model.resolve(state, entry);
+  const work = Model.resolve(state, entry).work;
+  const editions = state.editions.filter((ed) => ed.workId === work.id);
   lastDeleted = { entry, index, work, editions };
   state.entries.splice(index, 1);
   // Werk und Ausgaben nur entfernen, wenn kein anderer Eintrag sie nutzt
@@ -182,53 +458,72 @@ function undoDelete() {
    Anzeige (Rendering)
    ==================================================================== */
 
-/** Text für Vergleiche vereinfachen: Kleinbuchstaben, Akzente entfernen. */
-function normalize(text) {
-  return (text || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, ''); // "é" -> "e", "ü" -> "u"
-}
-
-/** Liefert die Bücher, die zu Filter und Suche passen. */
+/** Liefert die Bücher, die zu Ansicht, Filtern und Suche passen. */
 function visibleBooks() {
-  const term = normalize(searchTerm.trim());
-  return allBooks().filter((b) => {
-    if (activeFilter !== 'all' && b.status !== activeFilter) return false;
-    if (!term) return true;
-    return normalize(b.title).includes(term) || normalize(b.author).includes(term);
+  return List.filterBooks(allBooks(), {
+    view: activeView,
+    status: activeFilter,
+    format: activeFormat,
+    search: searchTerm,
   });
 }
 
-/** Baut die Filter-Chips inkl. Anzahl der Bücher je Status. */
+/** Erzeugt einen Filter-Chip mit Anzahl. */
+function chip(className, dataKey, key, label, count, pressed) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = className;
+  btn.dataset[dataKey] = key;
+  btn.setAttribute('aria-pressed', String(pressed));
+  btn.textContent = label;
+  const n = document.createElement('span');
+  n.className = 'n';
+  n.textContent = count;
+  btn.appendChild(n);
+  return btn;
+}
+
+/** Baut Ansicht-Tabs, Status- und Format-Chips inkl. Anzahl. */
 function renderFilters() {
   const books = allBooks();
-  const counts = { all: books.length };
-  for (const key of Object.keys(STATUSES)) counts[key] = 0;
-  for (const b of books) counts[b.status] = (counts[b.status] || 0) + 1;
 
-  const options = [['all', 'Alle'], ...Object.entries(STATUSES)];
+  els.views.innerHTML = '';
+  for (const [key, view] of Object.entries(List.VIEWS)) {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'tab';
+    tab.setAttribute('role', 'tab');
+    tab.dataset.view = key;
+    tab.setAttribute('aria-selected', String(key === activeView));
+    const count = books.filter((b) => view.statuses.includes(b.status)).length;
+    tab.textContent = `${view.label} (${count})`;
+    els.views.appendChild(tab);
+  }
+
+  // Status-Chips: nur die Status der aktuellen Ansicht; Zählung berücksichtigt das Format
+  const statuses = List.VIEWS[activeView].statuses;
+  const inFormat = List.filterBooks(books, { view: activeView, format: activeFormat });
   els.filters.innerHTML = '';
-  for (const [key, label] of options) {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'chip';
-    chip.dataset.filter = key;
-    chip.setAttribute('aria-pressed', String(key === activeFilter));
-    chip.textContent = label;
-    const n = document.createElement('span');
-    n.className = 'n';
-    n.textContent = counts[key];
-    chip.appendChild(n);
-    els.filters.appendChild(chip);
+  els.filters.appendChild(chip('chip', 'filter', 'all', 'Alle', inFormat.length, activeFilter === 'all'));
+  for (const key of statuses) {
+    const count = inFormat.filter((b) => b.status === key).length;
+    els.filters.appendChild(chip('chip', 'filter', key, STATUSES[key], count, activeFilter === key));
+  }
+
+  // Format-Chips: Zählung berücksichtigt Ansicht und Status
+  els.formatFilters.innerHTML = '';
+  for (const [key, f] of Object.entries(List.FORMAT_FILTERS)) {
+    const count = List.filterBooks(books, { view: activeView, status: activeFilter, format: key }).length;
+    els.formatFilters.appendChild(chip('chip chip-format', 'format', key, f.label, count, activeFormat === key));
   }
 }
 
 /** Sterne als Text, z. B. ★★★☆☆ (leere Sterne heller). */
-function starsElement(rating) {
+function starsElement(rating, label) {
   const span = document.createElement('span');
   span.className = 'stars-display';
-  span.setAttribute('aria-label', `${rating} von 5 Sternen`);
+  span.setAttribute('aria-label', `${label}: ${rating} von 5`);
+  span.title = label;
   span.textContent = '★'.repeat(rating);
   const off = document.createElement('span');
   off.className = 'off';
@@ -237,56 +532,67 @@ function starsElement(rating) {
   return span;
 }
 
+/** Kurzer Text zum Besitzformat, z. B. "Print + E-Book · liest als E-Book". */
+function formatLabel(entry) {
+  const o = entry.ownership;
+  if (o === 'both') {
+    const cur = entry.currentFormat ? ` · liest als ${entry.currentFormat === 'ebook' ? 'E-Book' : 'Print'}` : '';
+    return 'Print + E-Book' + cur;
+  }
+  if (o === 'ebook') return 'E-Book';
+  if (o === 'print') return 'Print';
+  if (o === 'none') return 'nicht im Besitz';
+  return 'Format offen';
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+}
+
 /** Erzeugt die Karte für ein einzelnes Buch. */
 function bookCard(book) {
   // Hinweis: Alle Texte werden per textContent gesetzt, nie per innerHTML.
   // So kann ein Titel wie "<b>" die Seite nicht durcheinanderbringen.
-  const li = document.createElement('li');
-  li.className = 'book';
+  const { entry, work } = book;
+  const li = el('li', 'book');
   li.dataset.status = book.status;
   li.dataset.id = book.id;
 
-  const title = document.createElement('h3');
-  title.className = 'book-title';
-  title.textContent = book.title;
-
-  const author = document.createElement('p');
-  author.className = 'book-author';
-  author.textContent = book.author;
-
-  const meta = document.createElement('div');
-  meta.className = 'book-meta';
-  const badge = document.createElement('span');
-  badge.className = 'badge';
-  badge.textContent = STATUSES[book.status] || book.status;
-  meta.appendChild(badge);
-  if (book.rating > 0) meta.appendChild(starsElement(book.rating));
-
-  li.append(title, author, meta);
-
-  if (book.notes) {
-    const notes = document.createElement('p');
-    notes.className = 'book-notes';
-    notes.textContent = book.notes;
-    li.appendChild(notes);
+  li.appendChild(el('h3', 'book-title', work.title));
+  if (work.subtitle) li.appendChild(el('p', 'book-sub', work.subtitle));
+  if (book.author) li.appendChild(el('p', 'book-author', book.author));
+  if (work.series) {
+    li.appendChild(el('p', 'book-sub', work.series + (work.seriesNumber ? `, Band ${work.seriesNumber}` : '')));
   }
 
-  const actions = document.createElement('div');
-  actions.className = 'book-actions';
-  const added = document.createElement('span');
-  added.className = 'added';
-  added.textContent = 'Hinzugefügt am ' +
-    new Date(book.addedAt).toLocaleDateString('de-DE');
-  const editBtn = document.createElement('button');
+  const meta = el('div', 'book-meta');
+  meta.appendChild(el('span', 'badge', STATUSES[book.status] || book.status));
+  meta.appendChild(el('span', 'badge badge-format', formatLabel(entry)));
+  if (book.rating > 0) {
+    meta.appendChild(starsElement(book.rating, isRatingAfterReading(book.status) ? 'Bewertung' : 'Priorität'));
+  }
+  li.appendChild(meta);
+
+  const tags = List.genresOf(book);
+  if (tags.length) {
+    const box = el('div', 'tags');
+    for (const t of tags) box.appendChild(el('span', 'tag', t));
+    li.appendChild(box);
+  }
+
+  if (entry.notes) li.appendChild(el('p', 'book-notes', entry.notes));
+
+  const actions = el('div', 'book-actions');
+  const added = el('span', 'added', 'Hinzugefügt am ' + new Date(entry.addedAt).toLocaleDateString('de-DE'));
+  const editBtn = el('button', 'btn', 'Bearbeiten');
   editBtn.type = 'button';
-  editBtn.className = 'btn';
   editBtn.dataset.action = 'edit';
-  editBtn.textContent = 'Bearbeiten';
-  const delBtn = document.createElement('button');
+  const delBtn = el('button', 'btn btn-danger', 'Löschen');
   delBtn.type = 'button';
-  delBtn.className = 'btn btn-danger';
   delBtn.dataset.action = 'delete';
-  delBtn.textContent = 'Löschen';
   actions.append(added, editBtn, delBtn);
   li.appendChild(actions);
 
@@ -310,6 +616,8 @@ function render() {
       els.empty.innerHTML =
         '<h2>Dein Regal ist noch leer</h2>' +
         '<p>Tippe auf <strong>+</strong>, um dein erstes Buch hinzuzufügen.</p>';
+    } else if (activeView === 'open' && activeFilter === 'all' && activeFormat === 'all' && !searchTerm) {
+      els.empty.innerHTML = '<p>Keine offenen Bücher. Gelesene findest du im <strong>Archiv</strong>.</p>';
     } else {
       els.empty.innerHTML = '<p>Keine Bücher gefunden.</p>';
     }
@@ -322,13 +630,17 @@ function render() {
    Formular-Dialog (Hinzufügen / Bearbeiten)
    ==================================================================== */
 
-// Status-Auswahl im Formular einmalig befüllen
-for (const [key, label] of Object.entries(STATUSES)) {
-  const opt = document.createElement('option');
-  opt.value = key;
-  opt.textContent = label;
-  els.status.appendChild(opt);
+// Status- und Besitzformat-Auswahl im Formular einmalig befüllen
+function fillSelect(select, options) {
+  for (const [key, label] of options) {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = label;
+    select.appendChild(opt);
+  }
 }
+fillSelect(els.status, Object.entries(STATUSES));
+fillSelect(els.ownership, [...Object.entries(Model.OWNERSHIP), ['', 'nicht angegeben']]);
 
 // Fünf Stern-Knöpfe für die Bewertung anlegen
 for (let i = 1; i <= 5; i++) {
@@ -359,23 +671,62 @@ function paintRatingLabel() {
     ? 'Bewertung nach dem Lesen' : 'Priorität';
 }
 
+/** Zeigt je nach Besitzformat die passenden Ausgabe-Abschnitte. */
+function paintOwnership() {
+  const ownership = els.ownership.value;
+  const formats = formatsFor(ownership);
+  els.secPrint.hidden = !formats.includes('print');
+  els.secEbook.hidden = !formats.includes('ebook');
+  els.secPrintTitle.textContent = ownership === 'print' || ownership === 'both'
+    ? 'Meine Ausgabe (Print)' : 'Ausgabe (falls bekannt)';
+  // Die ISBN oben gehört zur Hauptausgabe; das E-Book hat nur bei "beides" ein eigenes Feld
+  $('e-isbn').closest('.field').hidden = ownership !== 'both';
+  els.currentFormatField.hidden = ownership !== 'both';
+}
+
 /** Öffnet den Dialog – leer für ein neues Buch oder befüllt zum Bearbeiten. */
 function openDialog(book = null) {
   editingId = book ? book.id : null;
+  const entry = book ? book.entry : null;
+  const work = book ? book.work : null;
+  const ownership = entry ? (entry.ownership || '') : 'none';
+  const print = entry ? editionFor(entry, 'print') : null;
+  const ebook = entry ? editionFor(entry, 'ebook') : null;
+  const primary = primaryFormat(ownership) === 'ebook' ? ebook : print;
+
   els.dialogTitle.textContent = book ? 'Buch bearbeiten' : 'Buch hinzufügen';
-  els.title.value = book ? book.title : '';
-  els.author.value = book ? book.work.authors.join('; ') : '';
+  els.isbn.value = primary ? (primary.isbn13 || primary.isbn10) : '';
+  showIsbnHint(els.isbn, els.isbnHint);
+  els.title.value = work ? work.title : '';
+  els.author.value = work ? work.authors.join('; ') : '';
   // Neues Buch: Status vom aktiven Filter übernehmen, sonst "Wunschliste/Backlog"
   els.status.value = book ? book.status
-    : (activeFilter !== 'all' ? activeFilter : 'backlog');
-  els.notes.value = book ? book.notes : '';
+    : (activeFilter !== 'all' ? activeFilter : (activeView === 'archive' ? 'read' : 'backlog'));
+  els.ownership.value = ownership;
+  els.currentFormat.value = entry && entry.currentFormat ? entry.currentFormat : '';
+  els.notes.value = entry ? entry.notes : '';
+  els.tags.value = entry ? entry.tags.join(', ') : '';
+  fillFields('w', WORK_FIELDS, work);
+  fillFields('p', PRINT_FIELDS, print);
+  fillFields('e', EBOOK_FIELDS, ebook);
+  fillFields('s', SPECIAL_FIELDS, primary ? primary.special : null);
+  // Abschnitte mit Inhalt beim Bearbeiten aufgeklappt zeigen
+  for (const [id, values] of [
+    ['secWork', work && readFields('w', WORK_FIELDS)],
+    ['secPrint', print && readFields('p', PRINT_FIELDS)],
+    ['secEbook', ebook && readFields('e', EBOOK_FIELDS)],
+    ['secSpecial', primary && readFields('s', SPECIAL_FIELDS)],
+  ]) $(id).open = Boolean(values && hasContent(values));
+
   formRating = book ? book.rating : 0;
   els.error.textContent = '';
   paintStars();
   paintRatingLabel();
+  paintOwnership();
   els.dialog.showModal();
+  els.dialog.scrollTop = 0;
   // Auf dem Handy nur bei neuen Büchern direkt die Tastatur öffnen
-  if (!book) els.title.focus();
+  if (!book) els.isbn.focus();
 }
 
 function closeDialog() {
@@ -386,17 +737,22 @@ function closeDialog() {
 /** Prüft das Formular und speichert das Buch. */
 function submitForm(event) {
   event.preventDefault();
-  const data = {
-    title: els.title.value.trim(),
-    author: els.author.value.trim(),
-    status: els.status.value,
-    rating: formRating,
-    notes: els.notes.value.trim(),
-  };
+  const data = readForm();
 
-  if (!data.title || !data.author) {
-    els.error.textContent = 'Bitte Titel und Autor ausfüllen.';
-    (data.title ? els.author : els.title).focus();
+  if (!data.isbn.valid) {
+    els.error.textContent = data.isbn.error;
+    els.isbn.focus();
+    return;
+  }
+  if (data.ownership === 'both' && !data.ebookIsbn.valid) {
+    els.error.textContent = 'E-Book: ' + data.ebookIsbn.error;
+    $('secEbook').open = true;
+    $('e-isbn').focus();
+    return;
+  }
+  if (!data.title) {
+    els.error.textContent = 'Bitte einen Titel eintragen.';
+    els.title.focus();
     return;
   }
 
@@ -431,6 +787,8 @@ $('addBtn').addEventListener('click', () => openDialog());
 $('cancelBtn').addEventListener('click', closeDialog);
 els.form.addEventListener('submit', submitForm);
 els.status.addEventListener('change', paintRatingLabel);
+els.ownership.addEventListener('change', paintOwnership);
+els.isbn.addEventListener('blur', () => showIsbnHint(els.isbn, els.isbnHint));
 els.toastUndo.addEventListener('click', undoDelete);
 
 // Klick auf den abgedunkelten Hintergrund schließt den Dialog
@@ -453,11 +811,28 @@ els.search.addEventListener('input', () => {
   render();
 });
 
-// Filter-Chips (ein Listener für alle Chips)
+// Ansicht wechseln (Leseliste / Archiv / Alle); der Statusfilter beginnt dann wieder bei "Alle"
+els.views.addEventListener('click', (e) => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  activeView = tab.dataset.view;
+  activeFilter = 'all';
+  render();
+});
+
+// Status-Chips (ein Listener für alle Chips)
 els.filters.addEventListener('click', (e) => {
-  const chip = e.target.closest('.chip');
-  if (!chip) return;
-  activeFilter = chip.dataset.filter;
+  const c = e.target.closest('.chip');
+  if (!c) return;
+  activeFilter = c.dataset.filter;
+  render();
+});
+
+// Format-Chips
+els.formatFilters.addEventListener('click', (e) => {
+  const c = e.target.closest('.chip');
+  if (!c) return;
+  activeFormat = c.dataset.format;
   render();
 });
 
