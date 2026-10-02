@@ -14,7 +14,7 @@ Ein Bücher-Tracker mit Leseliste, ohne Abhängigkeiten und ohne Build:
 - **Werk und Ausgabe getrennt**: Werk (Titel, Autor:innen, Original, Reihe, Genres …) und die Ausgabe,
   die du besitzt (ISBN mit Prüfziffer-Check, Verlag, Auflage, Einband, Seiten, Übersetzer:in …),
   dazu Angaben für besondere Ausgaben (Erstausgabe, signiert, Zustand, Erwerb …).
-- **Score** aus Priorität, Vorfreude, Zeitdruck, Aufwand und Stimmung; Gewichte über ⚙ einstellbar.
+- **Score** aus Priorität, Vorfreude, Zeitdruck, Aufwand und Stimmung; Gewichte unter *Einstellungen* einstellbar.
   Sortierung nach Score, Titel, Autor:in, Seiten, Datum oder Format; „Als Nächstes“ mit ↑/↓ ordnen.
 - **Lesefortschritt** als Seite, Prozent oder Kapitel, mit Verlauf, Fortschrittsbalken und grober Restdauer.
 - **Metadaten-Suche** über ISBN oder Titel + Autor:in bei der Deutschen Nationalbibliothek, Google Books
@@ -36,7 +36,7 @@ Auf dem Handy lässt sie sich über „Zum Home-Bildschirm“ wie eine App ableg
 
 Im Browser, also nur auf dem Gerät und in dem Browser, in dem die Bücher eingetragen wurden:
 die Bücher im `localStorage` (`buecher-tracker.v2`), Cover in IndexedDB. Zum Sichern oder
-Übertragen auf ein anderes Gerät: ⚙ → *Export JSON* bzw. *Import JSON*.
+Übertragen auf ein anderes Gerät: *Einstellungen* → *Export JSON* bzw. *Import JSON*.
 
 Beim ersten Öffnen nach dem Update werden die Daten der ersten Version (`buecher-tracker.v1`)
 automatisch übernommen; die alten Daten bleiben als Sicherung unverändert liegen.
