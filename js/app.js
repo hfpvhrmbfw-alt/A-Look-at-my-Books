@@ -8,6 +8,7 @@
      js/progress.js – Lesefortschritt, Verlauf, Restdauer
      js/sources.js, js/enrich.js – Metadaten-Quellen, Zusammenführen, Vorschläge
      js/covers.js – Cover-Bilder lokal in IndexedDB (nur Browser)
+     js/transfer.js – Import/Export (JSON, CSV)
    ==================================================================== */
 'use strict';
 
@@ -1017,6 +1018,7 @@ function openDialog(book = null) {
   els.formNote.textContent = '';
   els.coverHint.textContent = '';
   paintCover(entry ? coverIdOf(entry) : null);
+  paintProvenance(entry, work, primary);
   els.error.textContent = '';
   paintStars();
   paintRatingLabel();
@@ -1073,6 +1075,30 @@ function submitForm(event) {
 
   closeDialog();
   render();
+}
+
+/** Liste "Herkunft der Angaben": je Feld manuell oder Quelle mit Abrufdatum. */
+function paintProvenance(entry, work, edition) {
+  const list = $('provenanceList');
+  list.innerHTML = '';
+  const labels = Object.assign({}, Enrich.WORK_FIELDS, Enrich.EDITION_FIELDS, {
+    coverId: 'Cover', status: 'Status', notes: 'Notizen', ownership: 'Besitzformat', tags: 'Tags',
+    special: 'Besondere Ausgabe', binding: 'Einband', ebookFormat: 'Dateiformat', ebookPlatform: 'Plattform',
+    currentFormat: 'Lese gerade als',
+  });
+  const rows = [];
+  for (const [entity, prefix] of [[work, 'Werk'], [edition, 'Ausgabe']]) {
+    if (!entity || !entity.sources) continue;
+    for (const [field, info] of Object.entries(entity.sources)) {
+      const label = (field === 'year' ? `${labels.year} (${prefix})` : labels[field] || field);
+      const who = info.source === 'manual' ? 'manuell' : (Sources.LABELS[info.source] || info.source);
+      const when = info.at ? new Date(info.at).toLocaleDateString('de-DE') : '';
+      rows.push(`${label}: ${who}${when ? `, ${when}` : ''}`);
+    }
+  }
+  for (const r of rows.sort((a, b) => a.localeCompare(b, 'de'))) list.appendChild(el('li', null, r));
+  $('secSources').hidden = !rows.length;
+  $('secSources').open = false;
 }
 
 /** Ist die ISBN im Formular neu (neues Buch oder geänderte ISBN)? */
@@ -1754,6 +1780,76 @@ els.settingsForm.addEventListener('submit', (e) => {
   saveState();
   els.settingsDialog.close();
   render();
+});
+
+/* ====================================================================
+   Import und Export
+   ==================================================================== */
+
+/** Bietet einen Text als Datei zum Speichern an. */
+function download(filename, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = el('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+
+const fileDate = () => Progress.today();
+
+$('exportJsonBtn').addEventListener('click', async () => {
+  let covers = {};
+  try {
+    const blobs = await Covers.all();
+    for (const [id, blob] of Object.entries(blobs)) covers[id] = await blobToDataUrl(blob);
+  } catch (err) {
+    console.error('Cover konnten nicht exportiert werden:', err);
+    covers = {};
+  }
+  const data = Transfer.exportJson(state, covers);
+  download(`buecher-${fileDate()}.json`, JSON.stringify(data, null, 1), 'application/json');
+});
+
+$('exportCsvBtn').addEventListener('click', () => {
+  download(`buecher-${fileDate()}.csv`, Transfer.exportCsv(state), 'text/csv;charset=utf-8');
+});
+
+$('importFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const { state: imported, covers } = Transfer.parseImport(await file.text());
+    const result = Transfer.mergeStates(state, imported);
+    if (!confirm(`${result.added} Bücher hinzufügen?` +
+      (result.skipped ? ` (${result.skipped} sind schon vorhanden und bleiben unverändert.)` : ''))) return;
+    for (const [id, url] of Object.entries(covers)) {
+      try {
+        if (!(await Covers.get(id))) await Covers.put(id, await (await fetch(url)).blob());
+      } catch (err) {
+        console.error('Cover konnte nicht importiert werden:', err);
+      }
+    }
+    state = result.state;
+    saveState();
+    els.settingsDialog.close();
+    render();
+    showToast(`${result.added} Bücher importiert`);
+  } catch (err) {
+    alert(err.message || 'Die Datei konnte nicht importiert werden.');
+  }
 });
 
 // Los geht's

@@ -392,6 +392,8 @@
     .status-abweichend { background: #f6e1d6; color: #8a3a22; }
     .status-identisch { background: var(--bg); color: var(--muted); }
     .field-spaced { margin-top: 10px; }
+    .provenance { list-style: none; margin: 0; font-size: 0.85rem; color: var(--muted); }
+    .provenance li { padding: 3px 0; border-bottom: 1px dashed var(--line); }
     .check-line { display: flex; gap: 8px; align-items: center; margin: 4px 0 10px; }
     .check-line input { width: auto; }
     .source-note { font-size: 0.75rem; color: var(--muted); }
@@ -597,6 +599,11 @@
         <div class="section-body" id="specialFields"></div>
       </details>
 
+      <details class="section" id="secSources" hidden>
+        <summary>Herkunft der Angaben</summary>
+        <ul class="section-body provenance" id="provenanceList"></ul>
+      </details>
+
       <p class="field-hint" id="formNote" role="status"></p>
       <p class="error" id="formError" role="alert"></p>
 
@@ -697,6 +704,15 @@
       <label class="check-line"><input type="checkbox" id="autoEnrich"> Beim Speichern einer neuen ISBN automatisch suchen</label>
       <button type="button" class="btn" id="clearCacheBtn">Zwischenspeicher leeren</button>
 
+      <h3 class="settings-head">Daten sichern und übertragen</h3>
+      <p class="field-hint">JSON enthält alles inkl. Cover (zum Sichern oder für ein anderes Gerät),
+        CSV ist eine Tabelle zum Ansehen. Beim Import werden Bücher hinzugefügt, vorhandene bleiben unverändert.</p>
+      <div class="cover-actions">
+        <button type="button" class="btn" id="exportJsonBtn">Export JSON</button>
+        <button type="button" class="btn" id="exportCsvBtn">Export CSV</button>
+        <label class="btn file-btn">Import JSON<input type="file" id="importFile" accept=".json,application/json" hidden></label>
+      </div>
+
       <div class="dialog-actions">
         <button type="button" class="btn" id="settingsCancelBtn">Abbrechen</button>
         <button type="submit" class="btn btn-primary">Speichern</button>
@@ -719,6 +735,7 @@
   <script src="js/sources.js"></script>
   <script src="js/enrich.js"></script>
   <script src="js/covers.js"></script>
+  <script src="js/transfer.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

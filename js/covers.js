@@ -21,6 +21,10 @@
         req.onupgradeneeded = () => req.result.createObjectStore(STORE);
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
+        req.onblocked = () => reject(new Error('Cover-Speicher ist gerade blockiert (anderer Tab offen?)'));
+      }).catch((err) => {
+        dbPromise = null; // beim nächsten Mal erneut versuchen
+        throw err;
       });
     }
     return dbPromise;
