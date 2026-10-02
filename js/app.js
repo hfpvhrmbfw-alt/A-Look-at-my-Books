@@ -1750,6 +1750,30 @@ function fillWeights(weights) {
   for (const key of Object.keys(Score.CRITERIA)) $(`wt-${key}`).value = weights[key] ?? 0;
 }
 
+/* ---------- Design-Schalter (System / Hell / Dunkel), Logik in js/theme.js ---------- */
+let themeMode = Theme.load(localStorage);
+
+function updateThemeButton() {
+  const nextMode = Theme.next(themeMode);
+  $('themeLabel').textContent = Theme.LABELS[themeMode];
+  $('themeBtn').title = `Design: ${Theme.LABELS[themeMode]}. Tippen wechselt zu ${Theme.LABELS[nextMode]}.`;
+  $('themeBtn').setAttribute('aria-label', $('themeBtn').title);
+}
+
+$('themeBtn').addEventListener('click', () => {
+  themeMode = Theme.save(localStorage, Theme.next(themeMode));
+  Theme.apply(document, themeMode);
+  updateThemeButton();
+});
+// Wahl aus einem anderen Tab übernehmen
+window.addEventListener('storage', (e) => {
+  if (e.key !== Theme.STORAGE_KEY) return;
+  themeMode = Theme.normalize(e.newValue);
+  Theme.apply(document, themeMode);
+  updateThemeButton();
+});
+updateThemeButton();
+
 $('settingsBtn').addEventListener('click', () => {
   fillWeights(state.settings.weights);
   $('sourceChecks').querySelectorAll('input').forEach((cb) => { cb.checked = state.settings.sources[cb.value] !== false; });

@@ -58,7 +58,7 @@ im Browser und wird weder exportiert noch ins Repository geschrieben.
 ## Tests
 
 Die reine Logik (ISBN, Datenmodell und Migration, Filter/Sortierung, Score, Fortschritt,
-Quellen-Auswertung, Zusammenführen der Vorschläge, Import/Export) ist mit dem in Node
+Quellen-Auswertung, Zusammenführen der Vorschläge, Import/Export, Design-Wahl) ist mit dem in Node
 eingebauten Testrunner getestet, ohne zusätzliche Pakete. Die Quellen werden dabei mit
 gespeicherten Antworten (`tests/fixtures/`) nachgebildet.
 
@@ -81,3 +81,4 @@ npm test        # oder: node --test
 | `js/enrich.js` | Zusammenführen, Vergleich, Passung, Cache |
 | `js/covers.js` | Cover in IndexedDB |
 | `js/transfer.js` | Import/Export |
+| `js/theme.js` | Design-Wahl System/Hell/Dunkel (Schalter oben rechts, gespeichert in diesem Browser) |
