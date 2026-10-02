@@ -8,13 +8,13 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
 
   <!--
-    Bücher-Tracker (Muss-Version)
-    =============================
-    Eine einzelne HTML-Datei ohne externe Abhängigkeiten.
+    Bücher-Tracker mit Leseliste
+    ============================
+    Ohne externe Abhängigkeiten und ohne Build: einfach im Browser öffnen.
     - Daten werden im Browser per localStorage gespeichert (nur auf diesem Gerät/Browser).
-    - Funktionen: Buch hinzufügen, bearbeiten, löschen; Status, Bewertung (1–5 Sterne),
-      Notizen; Filter nach Status und Suche nach Titel/Autor.
-    Aufbau dieser Datei: 1. CSS (Design)  2. HTML (Gerüst)  3. JavaScript (Logik)
+    - Datenmodell: Werk, Ausgabe, Leseeintrag (js/model.js); ISBN-Logik in js/isbn.js.
+      Die reinen Logik-Dateien sind mit "npm test" (node --test) getestet.
+    Aufbau: 1. CSS (Design) und 2. HTML (Gerüst) in dieser Datei, 3. Logik in js/app.js
   -->
 
   <style>
@@ -37,6 +37,7 @@
 
       /* Farben der Status-Markierungen */
       --st-want: #5c7a8a;
+      --st-next: #8a6d2b;
       --st-reading: #4f7a46;
       --st-read: #8b5a2b;
       --st-dropped: #8a7a6e;
@@ -91,6 +92,11 @@
       padding: 12px 0 8px;
       margin: -16px 0 8px;
       padding-top: 16px;
+    }
+
+    /* Auf dem Handy wäre die Leiste mit allen Filtern zu hoch zum Mitscrollen */
+    @media (max-width: 599px) {
+      .toolbar { position: static; }
     }
 
     .search {
@@ -152,7 +158,8 @@
       gap: 6px;
       box-shadow: 0 1px 2px rgba(59, 42, 31, 0.06);
     }
-    .book[data-status="want"]    { --st-color: var(--st-want); }
+    .book[data-status="backlog"] { --st-color: var(--st-want); }
+    .book[data-status="next"]    { --st-color: var(--st-next); }
     .book[data-status="reading"] { --st-color: var(--st-reading); }
     .book[data-status="read"]    { --st-color: var(--st-read); }
     .book[data-status="dropped"] { --st-color: var(--st-dropped); }
@@ -228,7 +235,9 @@
       background: var(--surface);
       color: var(--ink);
       width: 100%;
-      max-width: 520px;
+      max-width: 560px;
+      max-height: 92vh;
+      overflow-y: auto;
       border-radius: 16px;
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
     }
@@ -255,6 +264,7 @@
       background: #fff;
       width: 100%;
     }
+    .hint-inline { font-size: 0.8rem; }
     .field textarea { min-height: 100px; resize: vertical; }
     fieldset.field { border: none; margin: 0 0 14px; padding: 0; }
 
@@ -273,6 +283,125 @@
     }
     .star-input button.on { color: var(--star); }
     .star-input .hint { font-size: 0.85rem; color: var(--muted); margin-left: 8px; }
+
+    /* Ansicht-Umschalter (Leseliste / Archiv / Alle) */
+    .tabs { display: flex; gap: 4px; margin-bottom: 10px; background: var(--line); border-radius: 12px; padding: 3px; }
+    .tab {
+      flex: 1; border: none; background: none; font: inherit; color: var(--ink);
+      padding: 8px 4px; border-radius: 10px; cursor: pointer; min-height: 40px;
+      font-size: 0.9rem; white-space: nowrap;
+    }
+    .tab[aria-selected="true"] { background: var(--surface); box-shadow: 0 1px 2px rgba(59, 42, 31, 0.15); font-weight: 600; }
+    .filters + .filters { padding-top: 2px; }
+    .chip-format[aria-pressed="true"] { background: var(--header); border-color: var(--header); }
+
+    /* Formular: zwei Felder nebeneinander, einklappbare Abschnitte */
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+    .field-hint { font-size: 0.85rem; color: var(--muted); margin: 0; min-height: 1em; }
+    .field-hint.bad { color: var(--danger); }
+    details.section { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; background: #fff; }
+    details.section > summary { padding: 12px; cursor: pointer; font-weight: 600; min-height: 44px; }
+    details.section > summary .hint-inline { font-weight: normal; color: var(--muted); }
+    .section-body { padding: 0 12px 4px; }
+    .checks-label { font-size: 0.9rem; color: var(--muted); }
+    .checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+    .checks label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 0.95rem; min-height: 32px; }
+    .checks input { width: auto; }
+
+    /* Kleine Zusatzangaben auf der Karte */
+    .badge-format { background: none; color: var(--ink); border: 1px solid var(--line); }
+    .book-sub { color: var(--muted); font-size: 0.9rem; margin: -4px 0 0; overflow-wrap: anywhere; }
+    .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .tag { font-size: 0.75rem; border-radius: 6px; padding: 1px 6px; background: var(--bg); color: var(--muted); }
+
+    /* Kopfzeile rechts: Zähler + Einstellungen */
+    .header-right { display: flex; align-items: center; gap: 8px; }
+    .icon-btn {
+      background: none; border: none; color: #f6efe4; font-size: 1.4rem; cursor: pointer;
+      min-width: 44px; min-height: 44px; border-radius: 10px;
+    }
+    .icon-btn:hover { background: rgba(255, 255, 255, 0.1); }
+
+    /* Sortierung und weitere Filter */
+    .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-top: 6px; }
+    .control { display: flex; flex-direction: column; font-size: 0.75rem; color: var(--muted); gap: 2px; min-width: 0; }
+    .control select {
+      font: inherit; font-size: 0.9rem; color: var(--ink); padding: 8px; min-height: 40px;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--surface); width: 100%;
+    }
+
+    /* Gruppen-Überschriften in der Leseliste (Lese gerade / Als Nächstes / Backlog) */
+    .group-head { grid-column: 1 / -1; list-style: none; margin: 8px 0 -4px; }
+    .group-head h2 { font-size: 1.1rem; font-weight: normal; margin: 0; color: var(--muted); }
+    .badge-score { background: var(--header); }
+    .queue-btns { display: flex; align-items: center; gap: 4px; margin-right: auto; }
+    .queue-btns .btn { min-width: 44px; padding: 8px; }
+    .queue-pos { font-family: var(--serif); color: var(--muted); font-size: 1rem; }
+
+    /* Fortschrittsbalken und Verlauf */
+    .push-left { margin-right: auto; }
+    .progress { display: flex; flex-direction: column; gap: 4px; }
+    .progress-bar {
+      height: 10px; border-radius: 999px; background: var(--line); overflow: hidden;
+    }
+    .progress-bar > span { display: block; height: 100%; background: var(--st-reading); border-radius: 999px; }
+    .progress-text { font-size: 0.85rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 10px; }
+    .progress-log { list-style: none; padding: 0; margin: 0 0 8px; font-size: 0.85rem; color: var(--muted); max-height: 140px; overflow-y: auto; }
+    .progress-log li { padding: 2px 0; border-bottom: 1px dashed var(--line); }
+
+    /* Cover */
+    .book-head { display: flex; gap: 12px; align-items: flex-start; }
+    .book-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+    .cover-thumb { width: 56px; height: auto; max-height: 86px; object-fit: cover; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); flex: 0 0 auto; }
+    .cover-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+    .cover-preview { width: 72px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+    .cover-actions { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+    .cover-actions .checks-label { flex-basis: 100%; }
+    .cover-actions .field-hint { flex-basis: 100%; }
+    .file-btn { display: inline-flex; align-items: center; }
+    .input-with-btn { display: flex; gap: 8px; }
+    .input-with-btn input { flex: 1; min-width: 0; }
+    .input-with-btn .btn { flex: 0 0 auto; font-size: 0.9rem; }
+
+    /* Metadaten-Vorschläge */
+    .enrich-errors { margin: 0 0 8px; padding-left: 18px; color: var(--danger); font-size: 0.85rem; }
+    .enrich-note { background: #fbf1dc; border: 1px solid #ecd9ae; border-radius: 10px; padding: 8px 10px; font-size: 0.9rem; margin-bottom: 10px; }
+    .edition-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+    .edition-option {
+      display: flex; gap: 10px; width: 100%; text-align: left; font: inherit; color: inherit;
+      background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px; cursor: pointer;
+    }
+    .edition-option:hover, .edition-option:focus { border-color: var(--accent); }
+    .edition-option img, .edition-option .no-cover { width: 48px; min-height: 64px; border-radius: 3px; flex: 0 0 auto; object-fit: cover; background: var(--bg); }
+    .edition-option .eo-text { display: flex; flex-direction: column; gap: 2px; font-size: 0.9rem; min-width: 0; }
+    .edition-option strong { font-family: var(--serif); font-size: 1rem; }
+    .eo-match { color: var(--st-reading); font-size: 0.8rem; }
+    .badge-uncertain { background: #b5832a; color: #fff; border-radius: 999px; padding: 1px 8px; font-size: 0.75rem; align-self: flex-start; }
+    .btn-link { background: none; border: none; color: var(--accent); font: inherit; cursor: pointer; padding: 4px 0; margin-bottom: 6px; }
+    .edition-summary { font-size: 0.9rem; margin-bottom: 6px; display: flex; gap: 10px; align-items: flex-start; }
+    .edition-summary img { width: 56px; border-radius: 3px; }
+    .field-table { display: grid; gap: 6px; }
+    .field-row-check { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: #fff; }
+    .field-row-check input { width: 20px; height: 20px; margin-top: 2px; }
+    .frc-label { font-size: 0.8rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+    .frc-value { overflow-wrap: anywhere; font-size: 0.95rem; }
+    .frc-value.long { max-height: 6.5em; overflow: hidden; }
+    .frc-current { font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
+    .status-tag { border-radius: 6px; padding: 0 6px; font-size: 0.75rem; }
+    .status-neu { background: #e3efe0; color: #2f5a27; }
+    .status-abweichend { background: #f6e1d6; color: #8a3a22; }
+    .status-identisch { background: var(--bg); color: var(--muted); }
+    .field-spaced { margin-top: 10px; }
+    .provenance { list-style: none; margin: 0; font-size: 0.85rem; color: var(--muted); }
+    .provenance li { padding: 3px 0; border-bottom: 1px dashed var(--line); }
+    .check-line { display: flex; gap: 8px; align-items: center; margin: 4px 0 10px; }
+    .check-line input { width: auto; }
+    .source-note { font-size: 0.75rem; color: var(--muted); }
+
+    /* Teilkriterien und Gewichte */
+    .criteria, .weights { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+    .weights { margin-bottom: 12px; }
+    .settings-head { font-family: var(--serif); font-weight: normal; margin: 8px 0 4px; }
 
     .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
     .error { color: var(--danger); font-size: 0.85rem; min-height: 1em; }
@@ -321,16 +450,43 @@
   <header class="app-header">
     <div class="header-inner">
       <h1>📚 Meine Bücher</h1>
-      <span class="count" id="totalCount"></span>
+      <span class="header-right">
+        <span class="count" id="totalCount"></span>
+        <button type="button" class="icon-btn" id="settingsBtn" aria-label="Einstellungen" title="Einstellungen">⚙</button>
+      </span>
     </div>
   </header>
 
   <main>
     <div class="toolbar">
-      <label for="search" class="visually-hidden">Suche nach Titel oder Autor</label>
-      <input id="search" class="search" type="search" placeholder="Titel oder Autor suchen …" autocomplete="off">
-      <!-- Filter-Chips werden per JavaScript erzeugt (mit Anzahl je Status) -->
+      <!-- Ansicht: offene Bücher (Leseliste), Archiv (Gelesen/Abgebrochen) oder alle -->
+      <div class="tabs" id="views" role="tablist" aria-label="Ansicht"></div>
+      <label for="search" class="visually-hidden">Suche nach Titel, Autor:in, Reihe oder ISBN</label>
+      <input id="search" class="search" type="search" placeholder="Titel, Autor:in, Reihe oder ISBN suchen …" autocomplete="off">
+      <!-- Filter-Chips werden per JavaScript erzeugt (mit Anzahl je Status bzw. Format) -->
       <div class="filters" id="filters" role="group" aria-label="Nach Status filtern"></div>
+      <div class="filters" id="formatFilters" role="group" aria-label="Nach Format filtern"></div>
+      <div class="controls">
+        <label class="control">
+          <span>Sortieren</span>
+          <select id="sortSelect"></select>
+        </label>
+        <label class="control">
+          <span>Genre/Tag</span>
+          <select id="genreSelect"></select>
+        </label>
+        <label class="control">
+          <span>Mind. Score</span>
+          <select id="minScoreSelect">
+            <option value="">alle</option>
+            <option value="2">ab 2</option>
+            <option value="3">ab 3</option>
+            <option value="3.5">ab 3,5</option>
+            <option value="4">ab 4</option>
+            <option value="4.5">ab 4,5</option>
+          </select>
+        </label>
+      </div>
     </div>
 
     <ul class="book-list" id="bookList" aria-live="polite"></ul>
@@ -339,10 +495,21 @@
 
   <button class="fab" id="addBtn" type="button" aria-label="Buch hinzufügen" title="Buch hinzufügen">+</button>
 
-  <!-- Dialog zum Hinzufügen und Bearbeiten (dasselbe Formular für beides) -->
+  <!-- Dialog zum Hinzufügen und Bearbeiten (dasselbe Formular für beides).
+       Die einklappbaren Abschnitte (Werk, Ausgaben, Besonderheiten) werden per JavaScript
+       aus den Feldlisten in js/app.js erzeugt. -->
   <dialog id="bookDialog" aria-labelledby="dialogTitle">
     <form class="dialog-form" id="bookForm" method="dialog" novalidate>
       <h2 id="dialogTitle">Buch hinzufügen</h2>
+
+      <div class="field">
+        <label for="fIsbn">ISBN <span class="hint-inline">(vom Einband oder Impressum)</span></label>
+        <div class="input-with-btn">
+          <input id="fIsbn" type="text" inputmode="numeric" autocomplete="off" placeholder="z. B. 978-3-…">
+          <button type="button" class="btn" id="enrichBtn" title="Fehlende Angaben online suchen">Metadaten suchen</button>
+        </div>
+        <p class="field-hint" id="fIsbnHint"></p>
+      </div>
 
       <div class="field">
         <label for="fTitle">Titel *</label>
@@ -350,30 +517,205 @@
       </div>
 
       <div class="field">
-        <label for="fAuthor">Autor *</label>
-        <input id="fAuthor" name="author" type="text" required autocomplete="off">
+        <label for="fAuthor">Autor:in <span class="hint-inline">(mehrere mit ; trennen)</span></label>
+        <input id="fAuthor" name="author" type="text" autocomplete="off">
       </div>
 
-      <div class="field">
-        <label for="fStatus">Status</label>
-        <select id="fStatus" name="status"></select>
+      <div class="cover-row">
+        <img id="coverPreview" class="cover-preview" alt="" hidden>
+        <div class="cover-actions">
+          <span class="checks-label">Cover dieser Ausgabe</span>
+          <label class="btn file-btn">Bild wählen<input type="file" id="coverFile" accept="image/*" hidden></label>
+          <button type="button" class="btn" id="coverRemoveBtn" hidden>Entfernen</button>
+          <p class="field-hint" id="coverHint"></p>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="fStatus">Status</label>
+          <select id="fStatus" name="status"></select>
+        </div>
+        <div class="field">
+          <label for="fOwnership">Besitze ich als</label>
+          <select id="fOwnership" name="ownership"></select>
+        </div>
+      </div>
+
+      <div class="field" id="currentFormatField" hidden>
+        <label for="fCurrentFormat">Ich lese gerade als</label>
+        <select id="fCurrentFormat">
+          <option value="">–</option>
+          <option value="print">Print</option>
+          <option value="ebook">E-Book</option>
+        </select>
       </div>
 
       <fieldset class="field">
-        <legend>Bewertung</legend>
+        <legend id="ratingLabel">Priorität</legend>
         <div class="star-input" id="starInput"></div>
       </fieldset>
+
+      <div class="field-row" id="datesRow">
+        <div class="field">
+          <label for="fStartDate">Begonnen am</label>
+          <input id="fStartDate" type="date">
+        </div>
+        <div class="field">
+          <label for="fEndDate">Beendet am</label>
+          <input id="fEndDate" type="date">
+        </div>
+      </div>
+
+      <details class="section" id="secCriteria">
+        <summary>Leseinteresse im Detail <span class="hint-inline" id="scorePreview"></span></summary>
+        <div class="section-body criteria" id="criteriaFields"></div>
+      </details>
 
       <div class="field">
         <label for="fNotes">Notizen</label>
         <textarea id="fNotes" name="notes" placeholder="Gedanken, Zitate, Empfehlung von …"></textarea>
       </div>
 
+      <div class="field">
+        <label for="fTags">Tags <span class="hint-inline">(mit Komma trennen)</span></label>
+        <input id="fTags" type="text" autocomplete="off" placeholder="z. B. Urlaub, Lesekreis">
+      </div>
+
+      <details class="section" id="secWork">
+        <summary>Werk <span class="hint-inline">Untertitel, Original, Reihe, Genres …</span></summary>
+        <div class="section-body" id="workFields"></div>
+      </details>
+      <details class="section" id="secPrint">
+        <summary id="secPrintTitle">Meine Ausgabe (Print)</summary>
+        <div class="section-body" id="printFields"></div>
+      </details>
+      <details class="section" id="secEbook">
+        <summary>Meine Ausgabe (E-Book)</summary>
+        <div class="section-body" id="ebookFields"></div>
+      </details>
+      <details class="section" id="secSpecial">
+        <summary>Besondere Ausgabe <span class="hint-inline">Erstausgabe, signiert, Zustand …</span></summary>
+        <div class="section-body" id="specialFields"></div>
+      </details>
+
+      <details class="section" id="secSources" hidden>
+        <summary>Herkunft der Angaben</summary>
+        <ul class="section-body provenance" id="provenanceList"></ul>
+      </details>
+
+      <p class="field-hint" id="formNote" role="status"></p>
       <p class="error" id="formError" role="alert"></p>
 
       <div class="dialog-actions">
         <button type="button" class="btn" id="cancelBtn">Abbrechen</button>
         <button type="submit" class="btn btn-primary" id="saveBtn">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Metadaten-Vorschläge: erst Ausgabe wählen (bei mehreren Treffern), dann Felder übernehmen -->
+  <dialog id="enrichDialog" aria-labelledby="enrichTitle">
+    <div class="dialog-form">
+      <h2 id="enrichTitle">Metadaten-Vorschläge</h2>
+      <p class="field-hint" id="enrichStatus" role="status"></p>
+      <ul class="enrich-errors" id="enrichErrors"></ul>
+      <div id="enrichSpecial" class="enrich-note" hidden></div>
+      <ul class="edition-list" id="editionList" aria-label="Gefundene Ausgaben"></ul>
+      <div id="fieldView" hidden>
+        <button type="button" class="btn-link" id="backToEditions">← andere Ausgabe wählen</button>
+        <div class="edition-summary" id="editionSummary"></div>
+        <p class="field-hint">Neu = bei dir noch leer (vorausgewählt) · abweichend = anders als deine Angabe
+          (nur mit Haken übernommen) · identisch = schon gleich.</p>
+        <div class="field-table" id="fieldTable"></div>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="enrichCancelBtn">Abbrechen</button>
+        <button type="button" class="btn" id="enrichAllBtn" hidden>Alle übernehmen</button>
+        <button type="button" class="btn btn-primary" id="enrichApplyBtn" hidden>Auswahl übernehmen</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Fortschritt eintragen (schnell, auch unterwegs) -->
+  <dialog id="progressDialog" aria-labelledby="progressTitle">
+    <form class="dialog-form" id="progressForm" method="dialog" novalidate>
+      <h2 id="progressTitle">Fortschritt</h2>
+      <p class="book-sub" id="progressBook"></p>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="pUnit">Angabe als</label>
+          <select id="pUnit">
+            <option value="page">Seite</option>
+            <option value="percent">Prozent/Position</option>
+            <option value="chapter">Kapitel</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="pValue" id="pValueLabel">Seite</label>
+          <input id="pValue" type="number" inputmode="decimal" min="0" step="any">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field" id="pChapterCountField">
+          <label for="pChapterCount">Kapitel insgesamt</label>
+          <input id="pChapterCount" type="number" inputmode="numeric" min="1">
+        </div>
+        <div class="field">
+          <label for="pDate">Datum</label>
+          <input id="pDate" type="date">
+        </div>
+      </div>
+      <p class="field-hint" id="pPreview"></p>
+
+      <ul class="progress-log" id="progressLog" aria-label="Verlauf"></ul>
+
+      <p class="error" id="progressError" role="alert"></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="progressDoneBtn">Fertig gelesen</button>
+        <button type="button" class="btn" id="progressCancelBtn">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Einstellungen: Score-Gewichte (später auch Quellen, Import/Export) -->
+  <dialog id="settingsDialog" aria-labelledby="settingsTitle">
+    <form class="dialog-form" id="settingsForm" method="dialog" novalidate>
+      <h2 id="settingsTitle">Einstellungen</h2>
+
+      <h3 class="settings-head">Score-Gewichtung</h3>
+      <p class="field-hint">Der Score ist der gewichtete Mittelwert der Angaben (1–5) eines Buchs.
+        Fehlende Angaben zählen nicht mit, Gewicht 0 schaltet ein Kriterium ab.</p>
+      <div class="weights" id="weightFields"></div>
+      <button type="button" class="btn" id="resetWeightsBtn">Standard wiederherstellen</button>
+
+      <h3 class="settings-head">Metadaten-Suche</h3>
+      <div class="checks" id="sourceChecks">
+        <label><input type="checkbox" value="dnb"> Deutsche Nationalbibliothek</label>
+        <label><input type="checkbox" value="googlebooks"> Google Books</label>
+        <label><input type="checkbox" value="openlibrary"> Open Library</label>
+      </div>
+      <div class="field field-spaced">
+        <label for="googleKey">Google-Books-API-Key (optional, bleibt nur in diesem Browser)</label>
+        <input id="googleKey" type="text" autocomplete="off" spellcheck="false">
+      </div>
+      <label class="check-line"><input type="checkbox" id="autoEnrich"> Beim Speichern einer neuen ISBN automatisch suchen</label>
+      <button type="button" class="btn" id="clearCacheBtn">Zwischenspeicher leeren</button>
+
+      <h3 class="settings-head">Daten sichern und übertragen</h3>
+      <p class="field-hint">JSON enthält alles inkl. Cover (zum Sichern oder für ein anderes Gerät),
+        CSV ist eine Tabelle zum Ansehen. Beim Import werden Bücher hinzugefügt, vorhandene bleiben unverändert.</p>
+      <div class="cover-actions">
+        <button type="button" class="btn" id="exportJsonBtn">Export JSON</button>
+        <button type="button" class="btn" id="exportCsvBtn">Export CSV</button>
+        <label class="btn file-btn">Import JSON<input type="file" id="importFile" accept=".json,application/json" hidden></label>
+      </div>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="settingsCancelBtn">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Speichern</button>
       </div>
     </form>
   </dialog>
@@ -384,444 +726,16 @@
     <button type="button" id="toastUndo">Rückgängig</button>
   </div>
 
-  <script>
-    /* ====================================================================
-       3. LOGIK
-       ==================================================================== */
-    'use strict';
-
-    // Schlüssel, unter dem die Daten im localStorage liegen.
-    // Das "v1" erlaubt später eine Umstellung des Datenformats.
-    const STORAGE_KEY = 'buecher-tracker.v1';
-
-    // Alle möglichen Status: interner Schlüssel -> angezeigter Text.
-    // Die Reihenfolge bestimmt auch die Reihenfolge der Filter-Chips.
-    const STATUSES = {
-      reading: 'Lese ich gerade',
-      want: 'Will ich lesen',
-      read: 'Gelesen',
-      dropped: 'Abgebrochen',
-    };
-
-    /* ---------- Zustand der App ---------- */
-    let books = loadBooks();     // Array aller Bücher
-    let activeFilter = 'all';    // 'all' oder ein Status-Schlüssel
-    let searchTerm = '';
-    let editingId = null;        // ID des Buchs im Bearbeiten-Dialog (null = neues Buch)
-    let formRating = 0;          // Bewertung im Formular (0 = keine)
-    let lastDeleted = null;      // für "Rückgängig" nach dem Löschen
-    let toastTimer = null;
-
-    /* ---------- Elemente aus dem HTML ---------- */
-    const $ = (id) => document.getElementById(id);
-    const els = {
-      list: $('bookList'),
-      empty: $('emptyState'),
-      search: $('search'),
-      filters: $('filters'),
-      total: $('totalCount'),
-      dialog: $('bookDialog'),
-      form: $('bookForm'),
-      dialogTitle: $('dialogTitle'),
-      title: $('fTitle'),
-      author: $('fAuthor'),
-      status: $('fStatus'),
-      notes: $('fNotes'),
-      stars: $('starInput'),
-      error: $('formError'),
-      toast: $('toast'),
-      toastText: $('toastText'),
-      toastUndo: $('toastUndo'),
-    };
-
-    /* ====================================================================
-       Speichern & Laden (localStorage)
-       ==================================================================== */
-
-    /** Liest die Bücher aus dem localStorage. Bei Fehlern: leere Liste. */
-    function loadBooks() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        const data = raw ? JSON.parse(raw) : [];
-        return Array.isArray(data) ? data : [];
-      } catch (err) {
-        console.error('Konnte Bücher nicht laden:', err);
-        return [];
-      }
-    }
-
-    /** Schreibt alle Bücher in den localStorage. */
-    function saveBooks() {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
-      } catch (err) {
-        // z. B. privater Modus in manchen Browsern oder Speicher voll
-        console.error('Konnte Bücher nicht speichern:', err);
-        alert('Achtung: Die Daten konnten nicht gespeichert werden. ' +
-              'Ist der Browser im privaten Modus?');
-      }
-    }
-
-    /** Erzeugt eine eindeutige ID für ein neues Buch. */
-    function newId() {
-      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-      return Date.now().toString(36) + Math.random().toString(36).slice(2);
-    }
-
-    /* ====================================================================
-       Daten ändern: hinzufügen, bearbeiten, löschen
-       ==================================================================== */
-
-    /**
-     * Legt ein neues Buch an.
-     * Die Felder isbn, genre, pages, startDate, endDate und coverUrl sind schon
-     * vorgesehen (für die "Kann"-Funktionen später), werden aber noch nicht genutzt.
-     */
-    function addBook({ title, author, status, rating, notes }) {
-      books.unshift({
-        id: newId(),
-        title,
-        author,
-        status,
-        rating,               // 0 = keine Bewertung, sonst 1–5
-        notes,
-        addedAt: new Date().toISOString(),
-        // Für später vorgesehen:
-        isbn: '',
-        genre: '',
-        pages: null,
-        startDate: null,
-        endDate: null,
-        coverUrl: '',
-      });
-      saveBooks();
-    }
-
-    /** Übernimmt geänderte Felder in ein bestehendes Buch. */
-    function updateBook(id, changes) {
-      const book = books.find((b) => b.id === id);
-      if (!book) return;
-      Object.assign(book, changes);
-      saveBooks();
-    }
-
-    /** Löscht ein Buch und merkt es sich kurz für "Rückgängig". */
-    function deleteBook(id) {
-      const index = books.findIndex((b) => b.id === id);
-      if (index === -1) return;
-      lastDeleted = { book: books[index], index };
-      books.splice(index, 1);
-      saveBooks();
-      render();
-      showToast(`„${lastDeleted.book.title}" gelöscht`);
-    }
-
-    /** Stellt das zuletzt gelöschte Buch an seiner alten Position wieder her. */
-    function undoDelete() {
-      if (!lastDeleted) return;
-      books.splice(lastDeleted.index, 0, lastDeleted.book);
-      lastDeleted = null;
-      saveBooks();
-      hideToast();
-      render();
-    }
-
-    /* ====================================================================
-       Anzeige (Rendering)
-       ==================================================================== */
-
-    /** Text für Vergleiche vereinfachen: Kleinbuchstaben, Akzente entfernen. */
-    function normalize(text) {
-      return (text || '')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[̀-ͯ]/g, ''); // "é" -> "e", "ü" -> "u"
-    }
-
-    /** Liefert die Bücher, die zu Filter und Suche passen. */
-    function visibleBooks() {
-      const term = normalize(searchTerm.trim());
-      return books.filter((b) => {
-        if (activeFilter !== 'all' && b.status !== activeFilter) return false;
-        if (!term) return true;
-        return normalize(b.title).includes(term) || normalize(b.author).includes(term);
-      });
-    }
-
-    /** Baut die Filter-Chips inkl. Anzahl der Bücher je Status. */
-    function renderFilters() {
-      const counts = { all: books.length };
-      for (const key of Object.keys(STATUSES)) counts[key] = 0;
-      for (const b of books) counts[b.status] = (counts[b.status] || 0) + 1;
-
-      const options = [['all', 'Alle'], ...Object.entries(STATUSES)];
-      els.filters.innerHTML = '';
-      for (const [key, label] of options) {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'chip';
-        chip.dataset.filter = key;
-        chip.setAttribute('aria-pressed', String(key === activeFilter));
-        chip.textContent = label;
-        const n = document.createElement('span');
-        n.className = 'n';
-        n.textContent = counts[key];
-        chip.appendChild(n);
-        els.filters.appendChild(chip);
-      }
-    }
-
-    /** Sterne als Text, z. B. ★★★☆☆ (leere Sterne heller). */
-    function starsElement(rating) {
-      const span = document.createElement('span');
-      span.className = 'stars-display';
-      span.setAttribute('aria-label', `${rating} von 5 Sternen`);
-      span.textContent = '★'.repeat(rating);
-      const off = document.createElement('span');
-      off.className = 'off';
-      off.textContent = '★'.repeat(5 - rating);
-      span.appendChild(off);
-      return span;
-    }
-
-    /** Erzeugt die Karte für ein einzelnes Buch. */
-    function bookCard(book) {
-      // Hinweis: Alle Texte werden per textContent gesetzt, nie per innerHTML.
-      // So kann ein Titel wie "<b>" die Seite nicht durcheinanderbringen.
-      const li = document.createElement('li');
-      li.className = 'book';
-      li.dataset.status = book.status;
-      li.dataset.id = book.id;
-
-      const title = document.createElement('h3');
-      title.className = 'book-title';
-      title.textContent = book.title;
-
-      const author = document.createElement('p');
-      author.className = 'book-author';
-      author.textContent = book.author;
-
-      const meta = document.createElement('div');
-      meta.className = 'book-meta';
-      const badge = document.createElement('span');
-      badge.className = 'badge';
-      badge.textContent = STATUSES[book.status] || book.status;
-      meta.appendChild(badge);
-      if (book.rating > 0) meta.appendChild(starsElement(book.rating));
-
-      li.append(title, author, meta);
-
-      if (book.notes) {
-        const notes = document.createElement('p');
-        notes.className = 'book-notes';
-        notes.textContent = book.notes;
-        li.appendChild(notes);
-      }
-
-      const actions = document.createElement('div');
-      actions.className = 'book-actions';
-      const added = document.createElement('span');
-      added.className = 'added';
-      added.textContent = 'Hinzugefügt am ' +
-        new Date(book.addedAt).toLocaleDateString('de-DE');
-      const editBtn = document.createElement('button');
-      editBtn.type = 'button';
-      editBtn.className = 'btn';
-      editBtn.dataset.action = 'edit';
-      editBtn.textContent = 'Bearbeiten';
-      const delBtn = document.createElement('button');
-      delBtn.type = 'button';
-      delBtn.className = 'btn btn-danger';
-      delBtn.dataset.action = 'delete';
-      delBtn.textContent = 'Löschen';
-      actions.append(added, editBtn, delBtn);
-      li.appendChild(actions);
-
-      return li;
-    }
-
-    /** Zeichnet Filter, Liste und Zähler neu. Wird nach jeder Änderung aufgerufen. */
-    function render() {
-      renderFilters();
-      els.total.textContent = books.length === 1 ? '1 Buch' : `${books.length} Bücher`;
-
-      const list = visibleBooks();
-      els.list.innerHTML = '';
-      for (const book of list) els.list.appendChild(bookCard(book));
-
-      // Hinweis anzeigen, wenn nichts zu sehen ist
-      if (list.length === 0) {
-        els.empty.hidden = false;
-        if (books.length === 0) {
-          els.empty.innerHTML =
-            '<h2>Dein Regal ist noch leer</h2>' +
-            '<p>Tippe auf <strong>+</strong>, um dein erstes Buch hinzuzufügen.</p>';
-        } else {
-          els.empty.innerHTML = '<p>Keine Bücher gefunden.</p>';
-        }
-      } else {
-        els.empty.hidden = true;
-      }
-    }
-
-    /* ====================================================================
-       Formular-Dialog (Hinzufügen / Bearbeiten)
-       ==================================================================== */
-
-    // Status-Auswahl im Formular einmalig befüllen
-    for (const [key, label] of Object.entries(STATUSES)) {
-      const opt = document.createElement('option');
-      opt.value = key;
-      opt.textContent = label;
-      els.status.appendChild(opt);
-    }
-
-    // Fünf Stern-Knöpfe für die Bewertung anlegen
-    for (let i = 1; i <= 5; i++) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.dataset.value = i;
-      btn.textContent = '★';
-      btn.setAttribute('aria-label', `${i} ${i === 1 ? 'Stern' : 'Sterne'}`);
-      els.stars.appendChild(btn);
-    }
-    const starHint = document.createElement('span');
-    starHint.className = 'hint';
-    els.stars.appendChild(starHint);
-
-    /** Hebt die Sterne im Formular passend zur aktuellen Bewertung hervor. */
-    function paintStars() {
-      els.stars.querySelectorAll('button').forEach((btn) => {
-        const on = Number(btn.dataset.value) <= formRating;
-        btn.classList.toggle('on', on);
-        btn.setAttribute('aria-pressed', String(Number(btn.dataset.value) === formRating));
-      });
-      starHint.textContent = formRating ? '' : 'keine';
-    }
-
-    /** Öffnet den Dialog – leer für ein neues Buch oder befüllt zum Bearbeiten. */
-    function openDialog(book = null) {
-      editingId = book ? book.id : null;
-      els.dialogTitle.textContent = book ? 'Buch bearbeiten' : 'Buch hinzufügen';
-      els.title.value = book ? book.title : '';
-      els.author.value = book ? book.author : '';
-      // Neues Buch: Status vom aktiven Filter übernehmen, sonst "Will ich lesen"
-      els.status.value = book ? book.status
-        : (activeFilter !== 'all' ? activeFilter : 'want');
-      els.notes.value = book ? book.notes : '';
-      formRating = book ? book.rating : 0;
-      els.error.textContent = '';
-      paintStars();
-      els.dialog.showModal();
-      // Auf dem Handy nur bei neuen Büchern direkt die Tastatur öffnen
-      if (!book) els.title.focus();
-    }
-
-    function closeDialog() {
-      els.dialog.close();
-      editingId = null;
-    }
-
-    /** Prüft das Formular und speichert das Buch. */
-    function submitForm(event) {
-      event.preventDefault();
-      const data = {
-        title: els.title.value.trim(),
-        author: els.author.value.trim(),
-        status: els.status.value,
-        rating: formRating,
-        notes: els.notes.value.trim(),
-      };
-
-      if (!data.title || !data.author) {
-        els.error.textContent = 'Bitte Titel und Autor ausfüllen.';
-        (data.title ? els.author : els.title).focus();
-        return;
-      }
-
-      if (editingId) updateBook(editingId, data);
-      else addBook(data);
-
-      closeDialog();
-      render();
-    }
-
-    /* ====================================================================
-       Kurze Meldung (Toast)
-       ==================================================================== */
-
-    function showToast(text) {
-      els.toastText.textContent = text;
-      els.toast.hidden = false;
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(hideToast, 6000);
-    }
-
-    function hideToast() {
-      els.toast.hidden = true;
-      lastDeleted = null;
-    }
-
-    /* ====================================================================
-       Ereignisse (Klicks, Eingaben)
-       ==================================================================== */
-
-    $('addBtn').addEventListener('click', () => openDialog());
-    $('cancelBtn').addEventListener('click', closeDialog);
-    els.form.addEventListener('submit', submitForm);
-    els.toastUndo.addEventListener('click', undoDelete);
-
-    // Klick auf den abgedunkelten Hintergrund schließt den Dialog
-    els.dialog.addEventListener('click', (e) => {
-      if (e.target === els.dialog) closeDialog();
-    });
-
-    // Sterne: Klick setzt die Bewertung, erneuter Klick auf denselben Stern entfernt sie
-    els.stars.addEventListener('click', (e) => {
-      const btn = e.target.closest('button');
-      if (!btn) return;
-      const value = Number(btn.dataset.value);
-      formRating = formRating === value ? 0 : value;
-      paintStars();
-    });
-
-    // Suche: Liste bei jeder Eingabe aktualisieren
-    els.search.addEventListener('input', () => {
-      searchTerm = els.search.value;
-      render();
-    });
-
-    // Filter-Chips (ein Listener für alle Chips)
-    els.filters.addEventListener('click', (e) => {
-      const chip = e.target.closest('.chip');
-      if (!chip) return;
-      activeFilter = chip.dataset.filter;
-      render();
-    });
-
-    // Bearbeiten/Löschen-Knöpfe in den Karten (ein Listener für die ganze Liste)
-    els.list.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-action]');
-      if (!btn) return;
-      const id = btn.closest('.book').dataset.id;
-      const book = books.find((b) => b.id === id);
-      if (!book) return;
-      if (btn.dataset.action === 'edit') openDialog(book);
-      if (btn.dataset.action === 'delete') {
-        if (confirm(`„${book.title}" wirklich löschen?`)) deleteBook(id);
-      }
-    });
-
-    // Änderungen aus einem anderen Tab übernehmen (gleicher Browser)
-    window.addEventListener('storage', (e) => {
-      if (e.key === STORAGE_KEY) {
-        books = loadBooks();
-        render();
-      }
-    });
-
-    // Los geht's
-    render();
-  </script>
+  <!-- Logik: reine Funktionen (testbar mit "npm test") und die App-Oberfläche -->
+  <script src="js/isbn.js"></script>
+  <script src="js/model.js"></script>
+  <script src="js/list.js"></script>
+  <script src="js/score.js"></script>
+  <script src="js/progress.js"></script>
+  <script src="js/sources.js"></script>
+  <script src="js/enrich.js"></script>
+  <script src="js/covers.js"></script>
+  <script src="js/transfer.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>

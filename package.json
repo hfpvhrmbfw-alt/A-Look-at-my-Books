@@ -1,0 +1,8 @@
+{
+  "name": "a-look-at-my-books",
+  "private": true,
+  "description": "Bücher-Tracker ohne Abhängigkeiten; Tests laufen mit dem in Node eingebauten Testrunner.",
+  "scripts": {
+    "test": "node --test"
+  }
+}
