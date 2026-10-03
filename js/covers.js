@@ -101,6 +101,7 @@
       if (!/^image\//.test(blob.type) || blob.size < 200) throw new Error('kein Cover vorhanden');
       return await shrink(blob);
     } catch (err) {
+      if (root.navigator && root.navigator.onLine === false) throw new Error('offline');
       throw new Error(err.name === 'AbortError' ? 'Zeitüberschreitung' :
         err.message === 'Failed to fetch' ? 'Quelle erlaubt kein Herunterladen' : err.message);
     } finally {

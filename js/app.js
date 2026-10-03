@@ -1067,7 +1067,8 @@ function submitForm(event) {
     return;
   }
   // Optional: bei einer neuen ISBN vor dem Speichern automatisch suchen
-  if (state.settings.autoEnrichOnIsbn && hasIsbn && !enrichedInDialog && isNewIsbn(data.isbn)) {
+  // (offline nicht: dann wird einfach gespeichert, gesucht werden kann später)
+  if (state.settings.autoEnrichOnIsbn && hasIsbn && !enrichedInDialog && isNewIsbn(data.isbn) && !isOffline()) {
     startEnrichment();
     return;
   }
@@ -1282,9 +1283,12 @@ async function startEnrichment() {
   els.enrichDialog.showModal();
 
   let result;
+  const offline = isOffline();
   try {
     result = await Enrich.lookup(input, {
-      fetch: (url, opts) => window.fetch(url, opts),
+      // Offline gar nicht erst versuchen (sonst wartet jede Quelle auf die Zeitüberschreitung);
+      // bereits gesuchte Bücher kommen trotzdem aus dem Zwischenspeicher
+      fetch: (url, opts) => (isOffline() ? Promise.reject(new TypeError('offline')) : window.fetch(url, opts)),
       cache: lookupCache,
       sources,
       apiKey: state.settings.googleApiKey,
@@ -1296,7 +1300,12 @@ async function startEnrichment() {
   if (run !== enrichRun || !els.enrichDialog.open) return; // inzwischen abgebrochen
   enrichResult = result;
 
-  for (const e of result.errors) els.enrichErrors.appendChild(el('li', null, e.message));
+  if (offline && result.errors.length) {
+    els.enrichErrors.appendChild(el('li', null, 'Du bist offline. Die Suche braucht eine Internetverbindung; ' +
+      'nur früher gesuchte Bücher können aus dem Zwischenspeicher kommen.'));
+  } else {
+    for (const e of result.errors) els.enrichErrors.appendChild(el('li', null, e.message));
+  }
   if (result.special.special) {
     els.enrichSpecial.hidden = false;
     els.enrichSpecial.textContent = 'Das sieht nach einer besonderen oder älteren Ausgabe aus (' +
@@ -1304,7 +1313,9 @@ async function startEnrichment() {
       'die Vorschläge sind weniger sicher und sollten mit dem Buch verglichen werden.';
   }
   if (!result.editions.length) {
-    els.enrichStatus.textContent = result.errors.length && result.errors.length >= sources.length
+    els.enrichStatus.textContent = offline
+      ? 'Offline keine Treffer. Du kannst das Buch trotzdem speichern und später mit Internet erneut suchen.'
+      : result.errors.length && result.errors.length >= sources.length
       ? 'Keine Quelle war erreichbar. Du kannst das Buch trotzdem speichern und später erneut suchen.'
       : 'Keine Treffer. Prüfe die Angaben oder versuche es mit Titel und Autor:in.';
     return;
@@ -1313,6 +1324,11 @@ async function startEnrichment() {
   const top = result.editions[0];
   if (result.editions.length === 1 && top.match.reasons.includes('ISBN')) showEditionFields(0);
   else showEditionList();
+}
+
+/** Meldet der Browser, dass keine Internetverbindung besteht? */
+function isOffline() {
+  return navigator.onLine === false;
 }
 
 /** Text einer Ausgabe für Liste und Zusammenfassung. */

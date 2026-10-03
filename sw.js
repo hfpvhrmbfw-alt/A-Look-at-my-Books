@@ -89,8 +89,10 @@ if (typeof module === 'object' && module.exports) {
     // Nur eigene Dateien innerhalb des App-Ordners; alles andere (Buchquellen, Cover) normal laden
     if (url.origin !== self.location.origin || !url.href.startsWith(self.registration.scope)) return;
 
-    if (req.mode === 'navigate') {
-      // Seitenaufruf (auch mit ?… oder #…): immer die gespeicherte index.html
+    const appPage = url.pathname === new URL(self.registration.scope).pathname ||
+      url.pathname.endsWith('/index.html');
+    if (req.mode === 'navigate' && appPage) {
+      // Aufruf der App (auch mit ?… oder #…): immer die gespeicherte index.html
       event.respondWith(caches.open(APP_CACHE)
         .then((cache) => cache.match('index.html'))
         .then((hit) => hit || fetch(req)));
