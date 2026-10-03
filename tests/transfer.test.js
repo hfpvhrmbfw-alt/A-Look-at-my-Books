@@ -68,3 +68,30 @@ test('CSV: Kopfzeile, Semikolon, Anführungszeichen, BOM', () => {
   assert.match(lines[1], /;"Zitat: ""Zeit""; gut";/);
   assert.match(lines[1], /;9783630877396;;Penguin;;400;/);
 });
+
+test('Export und Wiederherstellen sind verlustfrei (inkl. Einstellungen, Verlauf, Herkunft, Cover)', () => {
+  const state = sampleState();
+  state.entries[0].progress.history = [{ at: '2026-10-01', page: 50 }, { at: '2026-10-02', page: 100 }];
+  state.entries[0].tags = ['Urlaub'];
+  Model.setSource(state.works[0], 'title', 'dnb', '2026-10-01T00:00:00Z');
+  state.settings.weights.priority = 70;
+  state.settings.sources.dnb = false;
+  const covers = { c1: 'data:image/jpeg;base64,AAA' };
+  const text = JSON.stringify(Transfer.exportJson(state, covers));
+  const parsed = Transfer.parseImport(text);
+  const restored = Transfer.replaceState({ settings: { googleApiKey: 'KEY-DIESES-GERÄTS' } }, parsed.state);
+  const expected = JSON.parse(JSON.stringify(state));
+  expected.settings.googleApiKey = 'KEY-DIESES-GERÄTS';
+  assert.deepEqual(restored, expected);
+  assert.deepEqual(parsed.covers, covers);
+  // Zweiter Durchgang ändert nichts mehr
+  const again = Transfer.parseImport(JSON.stringify(Transfer.exportJson(restored, covers)));
+  assert.deepEqual(Transfer.replaceState(restored, again.state), restored);
+});
+
+test('Wiederherstellen ersetzt den Bestand vollständig', () => {
+  const current = sampleState();
+  const restored = Transfer.replaceState(current, Model.emptyState());
+  assert.equal(restored.entries.length, 0);
+  assert.equal(restored.settings.googleApiKey, 'GEHEIM');
+});

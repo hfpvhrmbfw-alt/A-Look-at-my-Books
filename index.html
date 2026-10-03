@@ -841,12 +841,21 @@
       <button type="button" class="btn" id="clearCacheBtn">Zwischenspeicher leeren</button>
 
       <h3 class="settings-head">Daten sichern und übertragen</h3>
-      <p class="field-hint">JSON enthält alles inkl. Cover (zum Sichern oder für ein anderes Gerät),
-        CSV ist eine Tabelle zum Ansehen. Beim Import werden Bücher hinzugefügt, vorhandene bleiben unverändert.</p>
+      <p class="field-hint"><strong>Deine Bücher liegen nur auf diesem Gerät, in diesem Browser.</strong>
+        Der Browser kann sie löschen (z. B. bei Speichermangel, beim Löschen der Website-Daten oder wenn du
+        das App-Symbol entfernst). Auf dem iPhone hat die App auf dem Home-Bildschirm einen eigenen Speicher,
+        getrennt von Safari. Sichere deshalb regelmäßig mit „Export JSON“.</p>
+      <p class="field-hint" id="backupStatus"></p>
       <div class="cover-actions">
         <button type="button" class="btn" id="exportJsonBtn">Export JSON</button>
         <button type="button" class="btn" id="exportCsvBtn">Export CSV</button>
+      </div>
+      <p class="field-hint">JSON enthält alles inkl. Cover, CSV ist eine Tabelle zum Ansehen.
+        „Import JSON“ fügt Bücher hinzu, vorhandene bleiben unverändert. „Backup wiederherstellen“
+        ersetzt alle Bücher auf diesem Gerät durch die aus der Datei.</p>
+      <div class="cover-actions">
         <label class="btn file-btn">Import JSON<input type="file" id="importFile" accept=".json,application/json" hidden></label>
+        <label class="btn file-btn">Backup wiederherstellen<input type="file" id="restoreFile" accept=".json,application/json" hidden></label>
       </div>
 
       <p class="field-hint" id="appVersion"></p>

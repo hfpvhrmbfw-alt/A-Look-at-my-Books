@@ -13,6 +13,8 @@
 'use strict';
 
 const STORAGE_KEY = Model.KEYS.v2;
+const LAST_EXPORT_KEY = 'buecher-tracker.lastExport';          // Datum des letzten JSON-Exports
+const BEFORE_RESTORE_KEY = 'buecher-tracker.v2.vorWiederherstellung'; // Stand vor "Backup wiederherstellen"
 const STATUSES = Model.STATUSES;
 
 /* ---------- Zustand der App ---------- */
@@ -1780,6 +1782,7 @@ $('settingsBtn').addEventListener('click', () => {
   $('googleKey').value = state.settings.googleApiKey || '';
   $('autoEnrich').checked = Boolean(state.settings.autoEnrichOnIsbn);
   showAppVersion();
+  showBackupStatus();
   els.settingsDialog.showModal();
 });
 $('clearCacheBtn').addEventListener('click', () => {
@@ -1845,6 +1848,8 @@ $('exportJsonBtn').addEventListener('click', async () => {
   }
   const data = Transfer.exportJson(state, covers);
   download(`buecher-${fileDate()}.json`, JSON.stringify(data, null, 1), 'application/json');
+  try { localStorage.setItem(LAST_EXPORT_KEY, new Date().toISOString()); } catch (err) { /* egal */ }
+  showBackupStatus();
 });
 
 $('exportCsvBtn').addEventListener('click', () => {
@@ -1876,6 +1881,61 @@ $('importFile').addEventListener('change', async (e) => {
     alert(err.message || 'Die Datei konnte nicht importiert werden.');
   }
 });
+
+/**
+ * Backup wiederherstellen: ersetzt alle Bücher durch die aus der Datei.
+ * Vorher wird der bisherige Stand unverändert unter BEFORE_RESTORE_KEY abgelegt.
+ */
+$('restoreFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const { state: imported, covers } = Transfer.parseImport(await file.text());
+    const books = (n) => (n === 1 ? '1 Buch' : `${n} Bücher`);
+    const now = loadFailed ? 'die nicht lesbaren Daten' : `den Bestand (${books(state.entries.length)})`;
+    if (!confirm(`Backup wiederherstellen?\n\nDas ersetzt ${now} auf diesem Gerät durch ` +
+      `${books(imported.entries.length)} aus der Datei.`)) return;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) localStorage.setItem(BEFORE_RESTORE_KEY, raw);
+    } catch (err) {
+      if (!confirm('Der bisherige Stand konnte nicht als Sicherheitskopie abgelegt werden (Speicher voll?). Trotzdem ersetzen?')) return;
+    }
+    for (const [id, url] of Object.entries(covers)) {
+      try {
+        await Covers.put(id, await (await fetch(url)).blob());
+      } catch (err) {
+        console.error('Cover konnte nicht importiert werden:', err);
+      }
+    }
+    state = Transfer.replaceState(state, imported);
+    loadFailed = false; // bewusst ersetzt; die alten Rohdaten liegen in der Sicherheitskopie
+    saveState();
+    els.settingsDialog.close();
+    render();
+    showToast(`Backup wiederhergestellt: ${state.entries.length} Bücher`);
+  } catch (err) {
+    alert(err.message || 'Die Datei konnte nicht gelesen werden.');
+  }
+});
+
+/** Datum des letzten Exports und ob der Speicher dauerhaft ist. */
+async function showBackupStatus() {
+  let last = null;
+  try { last = localStorage.getItem(LAST_EXPORT_KEY); } catch (err) { /* egal */ }
+  const parts = [last ? `Letzter Export auf diesem Gerät: ${new Date(last).toLocaleDateString('de-DE')}.`
+    : 'Von diesem Gerät wurde noch nicht exportiert.'];
+  try {
+    if (navigator.storage && navigator.storage.persisted && await navigator.storage.persisted()) {
+      parts.push('Der Browser hat zugesagt, die Daten nicht von sich aus zu löschen.');
+    }
+  } catch (err) { /* egal */ }
+  $('backupStatus').textContent = parts.join(' ');
+}
+
+// Den Browser bitten, die Daten nicht bei Speichermangel zu räumen (wird evtl. abgelehnt)
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
 /* ====================================================================
    Offline-App (Service Worker, siehe sw.js)
