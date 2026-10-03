@@ -1779,6 +1779,7 @@ $('settingsBtn').addEventListener('click', () => {
   $('sourceChecks').querySelectorAll('input').forEach((cb) => { cb.checked = state.settings.sources[cb.value] !== false; });
   $('googleKey').value = state.settings.googleApiKey || '';
   $('autoEnrich').checked = Boolean(state.settings.autoEnrichOnIsbn);
+  showAppVersion();
   els.settingsDialog.showModal();
 });
 $('clearCacheBtn').addEventListener('click', () => {
@@ -1875,6 +1876,62 @@ $('importFile').addEventListener('change', async (e) => {
     alert(err.message || 'Die Datei konnte nicht importiert werden.');
   }
 });
+
+/* ====================================================================
+   Offline-App (Service Worker, siehe sw.js)
+   Nur über http(s), z. B. GitHub Pages; beim Öffnen per Doppelklick (file://) gibt es keinen.
+   ==================================================================== */
+
+const canUseServiceWorker = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol);
+let updateRequested = false; // erst nach Klick auf "Neu laden" neu laden (nicht beim ersten Besuch)
+
+/** Zeigt "Neue Version verfügbar", sobald eine neue Version fertig geladen ist und wartet. */
+function watchForUpdate(reg) {
+  const offer = (worker) => {
+    $('updateToast').hidden = false;
+    $('updateBtn').onclick = () => {
+      updateRequested = true;
+      worker.postMessage({ type: 'SKIP_WAITING' });
+    };
+  };
+  if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
+  reg.addEventListener('updatefound', () => {
+    const worker = reg.installing;
+    worker.addEventListener('statechange', () => {
+      // Beim allerersten Besuch gibt es noch keinen controller: dann nichts anbieten
+      if (worker.state === 'installed' && navigator.serviceWorker.controller) offer(worker);
+    });
+  });
+}
+
+if (canUseServiceWorker) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // Neue Version ist aktiv: einmal neu laden, damit alle Dateien aus ihr kommen
+    if (!updateRequested) return;
+    updateRequested = false;
+    location.reload();
+  });
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    watchForUpdate(reg);
+    // Beim Zurückkehren in die App nach Updates sehen (iOS hält Home-Bildschirm-Apps lange offen)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
+  }).catch((err) => console.error('Service Worker nicht registriert:', err));
+}
+
+/** Versionszeile in den Einstellungen. */
+function showAppVersion() {
+  const el = $('appVersion');
+  const ctrl = canUseServiceWorker && navigator.serviceWorker.controller;
+  if (!ctrl) {
+    el.textContent = 'Offline-Modus nicht aktiv (nur über die Web-Adresse, nicht per Doppelklick).';
+    return;
+  }
+  const channel = new MessageChannel();
+  channel.port1.onmessage = (e) => { el.textContent = `App-Version ${e.data.version} · startet auch offline`; };
+  ctrl.postMessage({ type: 'GET_VERSION' }, [channel.port2]);
+}
 
 // Los geht's
 render();

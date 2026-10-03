@@ -543,6 +543,10 @@
       z-index: 20;
       max-width: calc(100% - 32px);
     }
+    .toast-update {
+      top: calc(12px + env(safe-area-inset-top));
+      bottom: auto;
+    }
     .toast button {
       background: none;
       border: none;
@@ -845,6 +849,8 @@
         <label class="btn file-btn">Import JSON<input type="file" id="importFile" accept=".json,application/json" hidden></label>
       </div>
 
+      <p class="field-hint" id="appVersion"></p>
+
       <div class="dialog-actions">
         <button type="button" class="btn" id="settingsCancelBtn">Abbrechen</button>
         <button type="submit" class="btn btn-primary">Speichern</button>
@@ -853,6 +859,12 @@
   </dialog>
 
   <!-- Meldung mit "Rückgängig" nach dem Löschen -->
+  <!-- Hinweis, wenn eine neue Version der App bereitliegt (siehe sw.js) -->
+  <div class="toast toast-update" id="updateToast" role="status" hidden>
+    <span>Neue Version verfügbar</span>
+    <button type="button" id="updateBtn">Neu laden</button>
+  </div>
+
   <div class="toast" id="toast" role="status" hidden>
     <span id="toastText"></span>
     <button type="button" id="toastUndo">Rückgängig</button>
