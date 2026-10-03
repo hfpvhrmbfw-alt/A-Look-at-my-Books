@@ -13,6 +13,8 @@
 'use strict';
 
 const STORAGE_KEY = Model.KEYS.v2;
+const LAST_EXPORT_KEY = 'buecher-tracker.lastExport';          // Datum des letzten JSON-Exports
+const BEFORE_RESTORE_KEY = 'buecher-tracker.v2.vorWiederherstellung'; // Stand vor "Backup wiederherstellen"
 const STATUSES = Model.STATUSES;
 
 /* ---------- Zustand der App ---------- */
@@ -1065,7 +1067,8 @@ function submitForm(event) {
     return;
   }
   // Optional: bei einer neuen ISBN vor dem Speichern automatisch suchen
-  if (state.settings.autoEnrichOnIsbn && hasIsbn && !enrichedInDialog && isNewIsbn(data.isbn)) {
+  // (offline nicht: dann wird einfach gespeichert, gesucht werden kann später)
+  if (state.settings.autoEnrichOnIsbn && hasIsbn && !enrichedInDialog && isNewIsbn(data.isbn) && !isOffline()) {
     startEnrichment();
     return;
   }
@@ -1280,9 +1283,12 @@ async function startEnrichment() {
   els.enrichDialog.showModal();
 
   let result;
+  const offline = isOffline();
   try {
     result = await Enrich.lookup(input, {
-      fetch: (url, opts) => window.fetch(url, opts),
+      // Offline gar nicht erst versuchen (sonst wartet jede Quelle auf die Zeitüberschreitung);
+      // bereits gesuchte Bücher kommen trotzdem aus dem Zwischenspeicher
+      fetch: (url, opts) => (isOffline() ? Promise.reject(new TypeError('offline')) : window.fetch(url, opts)),
       cache: lookupCache,
       sources,
       apiKey: state.settings.googleApiKey,
@@ -1294,7 +1300,12 @@ async function startEnrichment() {
   if (run !== enrichRun || !els.enrichDialog.open) return; // inzwischen abgebrochen
   enrichResult = result;
 
-  for (const e of result.errors) els.enrichErrors.appendChild(el('li', null, e.message));
+  if (offline && result.errors.length) {
+    els.enrichErrors.appendChild(el('li', null, 'Du bist offline. Die Suche braucht eine Internetverbindung; ' +
+      'nur früher gesuchte Bücher können aus dem Zwischenspeicher kommen.'));
+  } else {
+    for (const e of result.errors) els.enrichErrors.appendChild(el('li', null, e.message));
+  }
   if (result.special.special) {
     els.enrichSpecial.hidden = false;
     els.enrichSpecial.textContent = 'Das sieht nach einer besonderen oder älteren Ausgabe aus (' +
@@ -1302,7 +1313,9 @@ async function startEnrichment() {
       'die Vorschläge sind weniger sicher und sollten mit dem Buch verglichen werden.';
   }
   if (!result.editions.length) {
-    els.enrichStatus.textContent = result.errors.length && result.errors.length >= sources.length
+    els.enrichStatus.textContent = offline
+      ? 'Offline keine Treffer. Du kannst das Buch trotzdem speichern und später mit Internet erneut suchen.'
+      : result.errors.length && result.errors.length >= sources.length
       ? 'Keine Quelle war erreichbar. Du kannst das Buch trotzdem speichern und später erneut suchen.'
       : 'Keine Treffer. Prüfe die Angaben oder versuche es mit Titel und Autor:in.';
     return;
@@ -1311,6 +1324,11 @@ async function startEnrichment() {
   const top = result.editions[0];
   if (result.editions.length === 1 && top.match.reasons.includes('ISBN')) showEditionFields(0);
   else showEditionList();
+}
+
+/** Meldet der Browser, dass keine Internetverbindung besteht? */
+function isOffline() {
+  return navigator.onLine === false;
 }
 
 /** Text einer Ausgabe für Liste und Zusammenfassung. */
@@ -1779,6 +1797,8 @@ $('settingsBtn').addEventListener('click', () => {
   $('sourceChecks').querySelectorAll('input').forEach((cb) => { cb.checked = state.settings.sources[cb.value] !== false; });
   $('googleKey').value = state.settings.googleApiKey || '';
   $('autoEnrich').checked = Boolean(state.settings.autoEnrichOnIsbn);
+  showAppVersion();
+  showBackupStatus();
   els.settingsDialog.showModal();
 });
 $('clearCacheBtn').addEventListener('click', () => {
@@ -1844,6 +1864,8 @@ $('exportJsonBtn').addEventListener('click', async () => {
   }
   const data = Transfer.exportJson(state, covers);
   download(`buecher-${fileDate()}.json`, JSON.stringify(data, null, 1), 'application/json');
+  try { localStorage.setItem(LAST_EXPORT_KEY, new Date().toISOString()); } catch (err) { /* egal */ }
+  showBackupStatus();
 });
 
 $('exportCsvBtn').addEventListener('click', () => {
@@ -1875,6 +1897,117 @@ $('importFile').addEventListener('change', async (e) => {
     alert(err.message || 'Die Datei konnte nicht importiert werden.');
   }
 });
+
+/**
+ * Backup wiederherstellen: ersetzt alle Bücher durch die aus der Datei.
+ * Vorher wird der bisherige Stand unverändert unter BEFORE_RESTORE_KEY abgelegt.
+ */
+$('restoreFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const { state: imported, covers } = Transfer.parseImport(await file.text());
+    const books = (n) => (n === 1 ? '1 Buch' : `${n} Bücher`);
+    const now = loadFailed ? 'die nicht lesbaren Daten' : `den Bestand (${books(state.entries.length)})`;
+    if (!confirm(`Backup wiederherstellen?\n\nDas ersetzt ${now} auf diesem Gerät durch ` +
+      `${books(imported.entries.length)} aus der Datei.`)) return;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) localStorage.setItem(BEFORE_RESTORE_KEY, raw);
+    } catch (err) {
+      if (!confirm('Der bisherige Stand konnte nicht als Sicherheitskopie abgelegt werden (Speicher voll?). Trotzdem ersetzen?')) return;
+    }
+    for (const [id, url] of Object.entries(covers)) {
+      try {
+        await Covers.put(id, await (await fetch(url)).blob());
+      } catch (err) {
+        console.error('Cover konnte nicht importiert werden:', err);
+      }
+    }
+    state = Transfer.replaceState(state, imported);
+    loadFailed = false; // bewusst ersetzt; die alten Rohdaten liegen in der Sicherheitskopie
+    saveState();
+    els.settingsDialog.close();
+    render();
+    showToast(`Backup wiederhergestellt: ${state.entries.length} Bücher`);
+  } catch (err) {
+    alert(err.message || 'Die Datei konnte nicht gelesen werden.');
+  }
+});
+
+/** Datum des letzten Exports und ob der Speicher dauerhaft ist. */
+async function showBackupStatus() {
+  let last = null;
+  try { last = localStorage.getItem(LAST_EXPORT_KEY); } catch (err) { /* egal */ }
+  const parts = [last ? `Letzter Export auf diesem Gerät: ${new Date(last).toLocaleDateString('de-DE')}.`
+    : 'Von diesem Gerät wurde noch nicht exportiert.'];
+  try {
+    if (navigator.storage && navigator.storage.persisted && await navigator.storage.persisted()) {
+      parts.push('Der Browser hat zugesagt, die Daten nicht von sich aus zu löschen.');
+    }
+  } catch (err) { /* egal */ }
+  $('backupStatus').textContent = parts.join(' ');
+}
+
+// Den Browser bitten, die Daten nicht bei Speichermangel zu räumen (wird evtl. abgelehnt)
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+/* ====================================================================
+   Offline-App (Service Worker, siehe sw.js)
+   Nur über http(s), z. B. GitHub Pages; beim Öffnen per Doppelklick (file://) gibt es keinen.
+   ==================================================================== */
+
+const canUseServiceWorker = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol);
+let updateRequested = false; // erst nach Klick auf "Neu laden" neu laden (nicht beim ersten Besuch)
+
+/** Zeigt "Neue Version verfügbar", sobald eine neue Version fertig geladen ist und wartet. */
+function watchForUpdate(reg) {
+  const offer = (worker) => {
+    $('updateToast').hidden = false;
+    $('updateBtn').onclick = () => {
+      updateRequested = true;
+      worker.postMessage({ type: 'SKIP_WAITING' });
+    };
+  };
+  if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
+  reg.addEventListener('updatefound', () => {
+    const worker = reg.installing;
+    worker.addEventListener('statechange', () => {
+      // Beim allerersten Besuch gibt es noch keinen controller: dann nichts anbieten
+      if (worker.state === 'installed' && navigator.serviceWorker.controller) offer(worker);
+    });
+  });
+}
+
+if (canUseServiceWorker) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // Neue Version ist aktiv: einmal neu laden, damit alle Dateien aus ihr kommen
+    if (!updateRequested) return;
+    updateRequested = false;
+    location.reload();
+  });
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    watchForUpdate(reg);
+    // Beim Zurückkehren in die App nach Updates sehen (iOS hält Home-Bildschirm-Apps lange offen)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
+  }).catch((err) => console.error('Service Worker nicht registriert:', err));
+}
+
+/** Versionszeile in den Einstellungen. */
+function showAppVersion() {
+  const el = $('appVersion');
+  const ctrl = canUseServiceWorker && navigator.serviceWorker.controller;
+  if (!ctrl) {
+    el.textContent = 'Offline-Modus nicht aktiv (nur über die Web-Adresse, nicht per Doppelklick).';
+    return;
+  }
+  const channel = new MessageChannel();
+  channel.port1.onmessage = (e) => { el.textContent = `App-Version ${e.data.version} · startet auch offline`; };
+  ctrl.postMessage({ type: 'GET_VERSION' }, [channel.port2]);
+}
 
 // Los geht's
 render();

@@ -5,6 +5,7 @@
     CSV  – flache Tabelle (eine Zeile pro Buch, Trennzeichen ";") zum Ansehen in Excel/Numbers.
   Beim Import werden Bücher hinzugefügt; Einträge, Werke und Ausgaben mit bereits
   vorhandener ID bleiben unverändert (nichts wird überschrieben).
+  "Backup wiederherstellen" ersetzt dagegen den ganzen Bestand (replaceState).
   Reine Logik ohne DOM (Browser: window.Transfer, Node: require).
 */
 (function (root, factory) {
@@ -69,6 +70,16 @@
     return { state: out, added, skipped };
   }
 
+  /**
+   * Backup wiederherstellen: Der importierte Bestand ersetzt den aktuellen vollständig.
+   * Der API-Key wird nie exportiert; deshalb bleibt der Key dieses Geräts erhalten.
+   */
+  function replaceState(current, imported) {
+    const out = JSON.parse(JSON.stringify(imported));
+    out.settings = Object.assign({}, out.settings, { googleApiKey: (current.settings && current.settings.googleApiKey) || '' });
+    return out;
+  }
+
   /* ---------- CSV ---------- */
 
   const CSV_COLUMNS = [
@@ -112,5 +123,5 @@
     return '﻿' + lines.join('\r\n') + '\r\n';
   }
 
-  return { exportJson, parseImport, mergeStates, exportCsv, CSV_COLUMNS };
+  return { exportJson, parseImport, mergeStates, replaceState, exportCsv, CSV_COLUMNS };
 });
