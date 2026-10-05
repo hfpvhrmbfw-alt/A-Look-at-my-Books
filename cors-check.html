@@ -50,7 +50,6 @@
   const ISBN = '9783630877396';
   const CHECKS = [
     ['DNB (Katalog)', `https://services.dnb.de/sru/dnb?version=1.1&operation=searchRetrieve&query=${encodeURIComponent('isbn=' + ISBN)}&recordSchema=MARC21-xml&maximumRecords=1`, 'text'],
-    ['DNB (Cover)', `https://portal.dnb.de/opac/mvb/cover?isbn=${ISBN}`, 'blob'],
     ['Google Books', `https://www.googleapis.com/books/v1/volumes?q=isbn:${ISBN}&maxResults=1`, 'text'],
     ['Open Library (Ausgabe)', `https://openlibrary.org/isbn/${ISBN}.json`, 'text'],
     ['Open Library (Suche)', 'https://openlibrary.org/search.json?q=erpenbeck+kairos&fields=key,title&limit=1', 'text'],
