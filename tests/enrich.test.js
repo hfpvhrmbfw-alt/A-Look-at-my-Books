@@ -35,6 +35,7 @@ function memoryCache() {
 
 test('DNB (MARC21): Werk und Ausgabe getrennt, Einband, Auflage, Seiten', () => {
   const [c] = Sources.parseDnb(fixture('dnb-kairos.xml'));
+  assert.equal(c.coverUrl, '', 'kein DNB-Cover (im Browser gesperrt)');
   assert.equal(c.source, 'dnb');
   assert.deepEqual(c.work.authors, ['Jenny Erpenbeck']);
   assert.equal(c.work.title, 'Kairos');
@@ -109,7 +110,8 @@ test('Zusammenführen: eine Ausgabe pro ISBN, Quellen-Priorität je Feld, Altern
   assert.equal(g.work.year.source, 'openlibrary');
   // ISBN-10 wird ergänzt
   assert.equal(g.edition.isbn10.value, '3630877397');
-  assert.equal(g.covers[0].source, 'dnb');
+  // Keine DNB-Cover (im Browser gesperrt); Cover kommen von Google Books und Open Library
+  assert.deepEqual(g.covers.map((c) => c.source).sort(), ['googlebooks', 'openlibrary']);
 });
 
 test('Vergleich: neu / abweichend / identisch, nur "neu" ist vorausgewählt', () => {
