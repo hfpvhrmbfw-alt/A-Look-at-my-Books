@@ -132,7 +132,7 @@
       justify-content: space-between;
       gap: 12px;
     }
-    .app-name { font-size: 12px; letter-spacing: .12em; }
+    .app-name { font-size: 12px; letter-spacing: .12em; white-space: nowrap; }
     header .count { color: var(--muted); font-size: 12px; letter-spacing: .12em; }
 
     .hero { max-width: var(--maxw); margin: 0 auto; padding: 32px 16px 0; }
@@ -170,6 +170,8 @@
       /* Mono-Schrift ist breiter: Knöpfe etwas schmaler, damit drei in eine Zeile passen */
       .book-actions .btn { font-size: 12px; padding: 8px 10px; }
       .book { padding-left: 14px; padding-right: 14px; }
+      /* "Hinzugefügt am" in eigene Zeile, damit die Knöpfe nebeneinander bleiben */
+      .added { flex-basis: 100%; }
     }
 
     .search, .field input, .field select, .field textarea, .control select {
@@ -210,7 +212,7 @@
       cursor: pointer;
       min-height: 40px;
     }
-    .chip:hover { background: var(--sunken); }
+    @media (hover: hover) { .chip:hover { background: var(--sunken); } }
     .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
     .chip .n { color: inherit; opacity: .7; margin-left: 6px; }
 
@@ -230,7 +232,8 @@
       gap: 8px;
       min-width: 0;
     }
-    .book:hover, .book[data-status="reading"] { border-top-color: var(--accent); }
+    .book[data-status="reading"] { border-top-color: var(--accent); }
+    @media (hover: hover) { .book:hover { border-top-color: var(--accent); } }
 
     .book-title { font-size: 1.3rem; margin: 0; line-height: 1.2; overflow-wrap: anywhere; }
     .book-author { color: var(--muted); margin: 0; overflow-wrap: anywhere; }
@@ -279,16 +282,16 @@
       cursor: pointer;
       text-decoration: none;
     }
-    .btn:hover { background: var(--ink); color: var(--bg); }
+    @media (hover: hover) { .btn:hover { background: var(--ink); color: var(--bg); } }
     .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-    .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-ink); }
+    @media (hover: hover) { .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-ink); } }
     .btn-danger { color: var(--err); border-color: var(--err); }
-    .btn-danger:hover { background: var(--err); border-color: var(--err); color: var(--bg); }
+    @media (hover: hover) { .btn-danger:hover { background: var(--err); border-color: var(--err); color: var(--bg); } }
 
     /* Quadratischer "+"-Knopf unten rechts (gut mit dem Daumen erreichbar) */
     .fab {
       position: fixed;
-      right: 20px;
+      right: calc(20px + env(safe-area-inset-right));
       bottom: calc(20px + env(safe-area-inset-bottom));
       width: 60px;
       height: 60px;
@@ -300,7 +303,7 @@
       cursor: pointer;
       z-index: 10;
     }
-    .fab:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    @media (hover: hover) { .fab:hover { background: var(--accent-hover); border-color: var(--accent-hover); } }
 
     /* Leerer Zustand */
     .empty { text-align: center; color: var(--muted); padding: 48px 16px; border-top: 1px solid var(--line); }
@@ -318,17 +321,23 @@
       width: 100%;
       max-width: 560px;
       max-height: 92vh;
+      /* iPhone: Höhe des sichtbaren Bereichs (ohne Tastatur), siehe js/mobile.js */
+      max-height: calc(var(--vvh, 100dvh) * .92);
       overflow-y: auto;
+      overscroll-behavior: contain;   /* Wischen im Dialog schiebt nicht die Seite dahinter */
     }
     dialog::backdrop { background: rgba(17, 17, 17, 0.55); }
     @media (max-width: 599px) {
       dialog {
         margin: auto 0 0;          /* unten andocken */
         max-width: 100%;
-        max-height: 92vh;
+        /* bei offener Tastatur über ihr andocken statt dahinter (--kb aus js/mobile.js) */
+        margin-bottom: var(--kb, 0px);
       }
     }
-    .dialog-form { padding: 20px 16px calc(16px + env(safe-area-inset-bottom)); }
+    .dialog-form {
+      padding: 20px max(16px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    }
     .dialog-form h2 {
       margin: 0 0 16px; font-size: 1.7rem; line-height: 1.1;
       border-left: 6px solid var(--accent); padding-left: 12px;
@@ -366,7 +375,7 @@
       background: none; color: var(--muted); cursor: pointer; min-height: 44px;
       font-size: 12px; font-weight: 600; padding: 12px 4px 10px; white-space: nowrap;
     }
-    .tab:hover { color: var(--ink); }
+    @media (hover: hover) { .tab:hover { color: var(--ink); } }
     .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 
     /* Formular: zwei Felder nebeneinander, einklappbare Abschnitte */
@@ -389,7 +398,7 @@
       font-size: 20px; color: var(--accent-text);
     }
     details.section[open] > summary::after { content: "−"; }
-    details.section > summary:hover { background: var(--sunken); }
+    @media (hover: hover) { details.section > summary:hover { background: var(--sunken); } }
     .section-body { padding: 4px 4px 8px; }
     .checks-label { font-size: 12px; color: var(--muted); }
     .checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
@@ -413,7 +422,7 @@
       text-decoration: underline; text-decoration-color: var(--accent);
       text-decoration-thickness: 2px; text-underline-offset: 4px;
     }
-    .icon-btn:hover { color: var(--accent-text); }
+    @media (hover: hover) { .icon-btn:hover { color: var(--accent-text); } }
     .header-right .count, .icon-btn { white-space: nowrap; }
     /* Auf dem Handy nur "System"/"Hell"/"Dunkel" zeigen, damit die Kopfzeile einzeilig bleibt
        (der volle Text steht im aria-label) */
@@ -421,12 +430,16 @@
       .theme-prefix { display: none; }
       .header-inner, .header-right { gap: 8px; }
     }
+    /* Schmale iPhones: Buchzahl ausblenden (steht auch in den Reitern), damit nichts umbricht */
+    @media (max-width: 419px) {
+      header .count { display: none; }
+    }
 
     /* Sortierung und weitere Filter */
     .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-top: 10px; }
     .control { display: flex; flex-direction: column; color: var(--muted); gap: 4px; min-width: 0; }
     .control > span { font-size: 11px; font-weight: 600; }
-    .control select { font-size: 0.9rem; padding: 8px; min-height: 40px; }
+    .control select { font-size: 16px; padding: 8px; min-height: 44px; } /* unter 16px zoomt das iPhone beim Antippen */
 
     /* Gruppen-Überschriften in der Leseliste (Lese gerade / Als Nächstes / Backlog)
        als orangene Label-Box mit fortlaufender Nummer */
@@ -477,7 +490,8 @@
       background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--ink);
       border-radius: 0; padding: 10px; cursor: pointer;
     }
-    .edition-option:hover, .edition-option:focus { border-top-color: var(--accent); background: var(--sunken); }
+    .edition-option:focus-visible { border-top-color: var(--accent); background: var(--sunken); }
+    @media (hover: hover) { .edition-option:hover { border-top-color: var(--accent); background: var(--sunken); } }
     .edition-option img, .edition-option .no-cover { width: 48px; min-height: 64px; flex: 0 0 auto; object-fit: cover; background: var(--sunken); border: 1px solid var(--line); }
     .edition-option .eo-text { display: flex; flex-direction: column; gap: 2px; font-size: 0.9rem; min-width: 0; }
     .edition-option strong { font-family: var(--serif); font-size: 1.05rem; }
@@ -491,7 +505,7 @@
       font: 600 12px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase;
       text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; text-underline-offset: 3px;
     }
-    .btn-link:hover { color: var(--accent-text); }
+    @media (hover: hover) { .btn-link:hover { color: var(--accent-text); } }
     .edition-summary { font-size: 0.9rem; margin-bottom: 8px; display: flex; gap: 10px; align-items: flex-start; }
     .edition-summary img { width: 56px; border: 1px solid var(--line); }
     .field-table { display: grid; gap: 6px; }
@@ -560,6 +574,52 @@
       text-underline-offset: 3px;
       cursor: pointer;
       padding: 8px 4px;
+    }
+
+    /* ------------------------------------------------------------------
+       iPhone und andere Touch-Geräte
+       ------------------------------------------------------------------ */
+    html {
+      -webkit-tap-highlight-color: transparent;  /* kein grauer Kasten beim Antippen */
+    }
+    /* Seite dahinter nicht mitscrollen, solange ein Dialog offen ist */
+    html:has(dialog[open]) { overflow: hidden; }
+
+    /* Seitenränder im Querformat: nicht unter Notch/Kamerainsel */
+    .header-inner, .hero, main {
+      padding-left: max(16px, env(safe-area-inset-left));
+      padding-right: max(16px, env(safe-area-inset-right));
+    }
+
+    /* Bedienelemente: kein Markieren/Kontextmenü bei langem Druck, kein Doppeltipp-Zoom */
+    button, .btn, .chip, .tab, .fab, .icon-btn, .btn-link, summary, .checks label, .check-line {
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      touch-action: manipulation;
+    }
+
+    /* Safari zeichnet Such- und Textfelder sonst abgerundet mit Innenschatten */
+    .search, .field input:not([type="checkbox"]), .field textarea {
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    /* Datumsfelder: auf dem iPhone sonst zentriert und leer flacher als die anderen Felder */
+    .field input[type="date"] { min-height: 46px; text-align: left; }
+    .field input[type="date"]::-webkit-date-and-time-value { text-align: left; }
+
+    @media (pointer: coarse) {
+      /* Antippbare Flächen mindestens 44 px hoch (Apple-Empfehlung) */
+      .btn, .chip, .control select { min-height: 44px; }
+      .checks label, .check-line { min-height: 44px; }
+      .toast button { min-height: 44px; padding: 12px 8px; }
+      .btn-link { min-height: 44px; }
+    }
+    @media (hover: none) {
+      /* Rückmeldung beim Antippen statt "hängenbleibendem" Hover */
+      .btn:active, .chip:active, details.section > summary:active, .edition-option:active { background: var(--sunken); }
+      .btn-primary:active, .fab:active { background: var(--accent-hover); border-color: var(--accent-hover); }
+      .tab:active, .icon-btn:active, .btn-link:active { color: var(--accent-text); }
     }
 
     .visually-hidden {
@@ -890,5 +950,6 @@
   <script src="js/covers.js"></script>
   <script src="js/transfer.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/mobile.js"></script>
 </body>
 </html>
