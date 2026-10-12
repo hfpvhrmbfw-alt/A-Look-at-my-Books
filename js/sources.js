@@ -345,9 +345,8 @@
       illustrators: uniq(people.ill),
       forewordBy: uniq([...people.aui, ...people.aft]).join('; '),
     });
-    if (c.edition.isbn13 || c.edition.isbn10) {
-      c.coverUrl = `https://portal.dnb.de/opac/mvb/cover?isbn=${c.edition.isbn13 || c.edition.isbn10}`;
-    }
+    // Kein Cover von der DNB: portal.dnb.de erlaubt das Herunterladen im Browser nicht (CORS,
+    // auf dem iPhone mit cors-check.html geprüft). Cover kommen von Google Books und Open Library.
     return c;
   }
 
