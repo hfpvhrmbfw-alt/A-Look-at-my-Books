@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#E3DAD3" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#1D1916" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#EDE8DF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1A1816" media="(prefers-color-scheme: dark)">
   <title>Meine Bücher</title>
   <!-- Als App installierbar (PWA): Manifest, Icons und iOS-Angaben. Alle Pfade relativ,
        damit es unter https://NAME.github.io/REPONAME/ genauso läuft wie lokal. -->
@@ -16,10 +16,10 @@
   <meta name="apple-mobile-web-app-title" content="Bücher">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23E8451C'/><text x='50' y='76' font-family='Georgia,serif' font-weight='700' font-size='72' text-anchor='middle' fill='%23111111'>B</text></svg>">
-  <!-- Schriften des Hausstils; ohne Internet greifen die Ersatzschriften (Georgia, Systemschrift) -->
+  <!-- Schriften des Stils Kreide; ohne Internet greifen die Ersatzschriften (Georgia, Systemschrift) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Literata:opsz,wght@7..72,400;7..72,600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
   <!-- Gewähltes Design (System/Hell/Dunkel) vor dem ersten Zeichnen setzen, damit nichts aufblitzt -->
   <script src="js/theme.js"></script>
   <script>Theme.apply(document, Theme.load(window.localStorage));</script>
@@ -36,52 +36,52 @@
 
   <style>
     /* ------------------------------------------------------------------
-       1. DESIGN (Hausstil Web)
+       1. DESIGN (Stil Kreide aus dem Castra-Designsystem, auf Basis Hausstil Web)
        Farben als Variablen, damit man das Farbschema an einer Stelle ändern kann.
-       Warmer "Terra"-Hintergrund, eine einzige Akzentfarbe (Signal-Orange),
+       Papierheller Grund, eine einzige Akzentfarbe (Siegelrot),
        eckige Formen ohne Schatten. Hell- und Dunkelmodus folgen dem System,
        außer im Kopf ist "Hell" oder "Dunkel" gewählt (data-theme auf <html>, siehe js/theme.js).
-       Schriften: Source Serif 4 (Titel), IBM Plex Sans (Text), IBM Plex Mono (Beschriftungen).
+       Schriften: Playfair Display (Titel), Literata (Text), Courier Prime (Beschriftungen).
        ------------------------------------------------------------------ */
     :root {
-      --bg: #E3DAD3;          /* Terra */
-      --surface: #F2EBE6;     /* Karten, Felder */
-      --sunken: #D8CDC5;      /* Hover, Platzhalter */
-      --line: #C8BBB1;        /* Haarlinien */
-      --ink: #111111;         /* Text, kräftige Linien */
-      --muted: #5C524D;       /* Nebentext */
-      --faint: #8D837C;       /* nur Dekoration, nie Lesetext */
-      --accent: #E8451C;      /* Signal-Orange: Flächen, Balken, Linien */
-      --accent-text: #AA310D; /* Orange als kleine Schrift */
-      --accent-hover: #C9380F;
-      --accent-tint: #F5CEC2;
-      --accent-ink: #111111;  /* Text auf orangener Fläche */
+      --bg: #EDE8DF;          /* Papier */
+      --surface: #F8F5EF;     /* Karten, Felder */
+      --sunken: #E2DCD1;      /* Hover, Platzhalter */
+      --line: #D3CBBE;        /* Haarlinien */
+      --ink: #1A1714;         /* Text, kräftige Linien */
+      --muted: #5A534A;       /* Nebentext */
+      --faint: #9A9187;       /* nur Dekoration, nie Lesetext */
+      --accent: #A3201B;      /* Siegelrot: Flächen, Balken, Linien */
+      --accent-text: #8E1C17; /* Rot als kleine Schrift */
+      --accent-hover: #881A16;
+      --accent-tint: #F1D6D1;
+      --accent-ink: #FFFFFF; --label-no:#F1D6D1;  /* Text auf roter Fläche */
 
       /* Statusfarben nur für Hinweise, nie als Dekoration */
       --ok: #2B6B3A; --ok-tint: #DCE8DA;
       --warn: #7A5200; --warn-tint: #F1E3C4;
       --err: #A3182B; --err-tint: #F2D3D3;
 
-      --serif: "Source Serif 4", Georgia, serif;
-      --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-      --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+      --serif:"Playfair Display",Georgia,serif;
+      --sans:"Literata",Georgia,serif;
+      --mono:"Courier Prime",ui-monospace,monospace;
       --r: 2px;               /* nur Knöpfe; sonst eckig */
       --maxw: 960px;
       color-scheme: light;
     }
     [data-theme="dark"] {
-      --bg: #1D1916; --surface: #27211D; --sunken: #332B26; --line: #463C35;
-      --ink: #EFE6DE; --muted: #B7ABA1; --faint: #7F746B;
-      --accent: #E8451C; --accent-text: #F0896F; --accent-hover: #EB603C; --accent-tint: #4E281D; --accent-ink: #111111;
+      --bg: #1A1816; --surface: #23201D; --sunken: #2D2925; --line: #403A34;
+      --ink: #ECE5DA; --muted: #B3A999; --faint: #7A7166;
+      --accent: #B8382F; --accent-text: #EE9A90; --accent-hover: #C9463C; --accent-tint: #44201C; --accent-ink: #FFFFFF; --label-no:#F1D6D1;
       --ok: #7FC48F; --ok-tint: #233226; --warn: #E0B25A; --warn-tint: #352B17; --err: #F08A8F; --err-tint: #3A2123;
       color-scheme: dark;
     }
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) {
         /* dieselben Werte wie [data-theme="dark"] */
-        --bg: #1D1916; --surface: #27211D; --sunken: #332B26; --line: #463C35;
-        --ink: #EFE6DE; --muted: #B7ABA1; --faint: #7F746B;
-        --accent: #E8451C; --accent-text: #F0896F; --accent-hover: #EB603C; --accent-tint: #4E281D; --accent-ink: #111111;
+        --bg: #1A1816; --surface: #23201D; --sunken: #2D2925; --line: #403A34;
+        --ink: #ECE5DA; --muted: #B3A999; --faint: #7A7166;
+        --accent: #B8382F; --accent-text: #EE9A90; --accent-hover: #C9463C; --accent-tint: #44201C; --accent-ink: #FFFFFF; --label-no:#F1D6D1;
         --ok: #7FC48F; --ok-tint: #233226; --warn: #E0B25A; --warn-tint: #352B17; --err: #F08A8F; --err-tint: #3A2123;
         color-scheme: dark;
       }
@@ -450,7 +450,7 @@
       background: var(--accent); color: var(--accent-ink);
       font: 600 16px/1.2 var(--mono); letter-spacing: .04em; padding: 9px 14px;
     }
-    .group-head h2::before { content: "№ " counter(grp, decimal-leading-zero) " — "; color: #fff; }
+    .group-head h2::before { content: "№ " counter(grp, decimal-leading-zero) " — "; color: var(--label-no); }
     .queue-btns { display: flex; align-items: center; gap: 4px; margin-right: auto; }
     .queue-btns .btn { min-width: 44px; padding: 8px; }
     .queue-pos { font: 700 1.3rem/1 var(--serif); color: var(--ink); margin-right: 4px; }
@@ -626,7 +626,21 @@
       position: absolute; width: 1px; height: 1px; overflow: hidden;
       clip: rect(0 0 0 0); white-space: nowrap;
     }
-  </style>
+  
+/* Stil Kreide v1.0 (Castra-Designsystem): Form und Linien */
+:root { --r:0px; }
+.card { border-radius:0px; border-top-width:3px; }
+.note { border-radius:0 0px 0px 0; }
+.label, .tag { border-radius:0px; }
+.field input, .field select, .field textarea { border-radius:0px 0px 0 0; }
+.rule-heavy, .part { border-top-width:3px; }
+.section, table.data th, .tabs [role="tablist"] { border-bottom-width:1px; }
+.hero h1, .label, .card h3, .kpi .v, blockquote p { font-weight:700; }
+.label { font-weight:700; }
+.label { font-variant:small-caps; }
+.group-head h2 { font-variant:small-caps; font-weight:700; }
+h1, h2, h3, .book-title { font-weight:700; }
+</style>
 </head>
 <body>
 
