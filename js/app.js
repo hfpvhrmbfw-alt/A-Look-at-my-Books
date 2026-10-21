@@ -37,6 +37,8 @@ let enrichResult = null;     // letztes Suchergebnis (Ausgaben, Fehler …)
 let enrichRows = [];         // Feldzeilen der gewählten Ausgabe
 let enrichEdition = null;    // gewählte Ausgabe
 const coverBlobs = new Map(); // Cover-URL der Quelle -> heruntergeladenes Bild (Promise)       // ID des Eintrags im Fortschritt-Dialog
+// Handy-Layout (unter 600 px): Buchzeilen statt Karten, siehe CSS in index.html
+const compactLayout = window.matchMedia('(max-width: 599px)');
 let lastDeleted = null;      // für "Rückgängig" nach dem Löschen
 let toastTimer = null;
 
@@ -665,6 +667,11 @@ function renderFilters() {
   els.genre.value = genres.find((g) => List.normalize(g) === List.normalize(activeGenre)) || '';
   els.sort.value = state.settings.sort;
 
+  // Handy: Zahl der aktiven Filter am Filter-Knopf
+  const active = [activeFilter !== 'all', activeFormat !== 'all', Boolean(activeGenre), minScore != null].filter(Boolean).length;
+  $('filterCount').textContent = active;
+  $('filterCount').hidden = active === 0;
+
   // Format-Chips: Zählung berücksichtigt Ansicht und Status
   els.formatFilters.innerHTML = '';
   for (const [key, f] of Object.entries(List.FORMAT_FILTERS)) {
@@ -755,16 +762,23 @@ function bookCard(book, inQueue = false) {
   const { entry, work } = book;
   const li = el('li', 'book');
   li.dataset.status = book.status;
+  if (inQueue) li.dataset.queue = 'true';
   li.dataset.id = book.id;
 
   // Kopf: Cover (falls lokal gespeichert) und Titelangaben
   const head = el('div', 'book-head');
+  // Handy: Platz in der Warteschlange vorn in der Zeile
+  if (inQueue) head.appendChild(el('span', 'row-pos', `${entry.queuePos}.`));
+  // Platzhalter mit Anfangsbuchstabe (nur auf dem Handy sichtbar), bis ein Cover geladen ist
+  const placeholder = el('span', 'cover-ph', (work.title || '?').trim().charAt(0).toUpperCase());
+  placeholder.setAttribute('aria-hidden', 'true');
+  head.appendChild(placeholder);
   const coverId = coverIdOf(entry);
   if (coverId) {
     const img = el('img', 'cover-thumb');
     img.alt = '';
     img.hidden = true;
-    Covers.url(coverId).then((u) => { if (u) { img.src = u; img.hidden = false; } });
+    Covers.url(coverId).then((u) => { if (u) { img.src = u; img.hidden = false; placeholder.remove(); } });
     head.appendChild(img);
   }
   const text = el('div', 'book-head-text');
@@ -775,6 +789,13 @@ function bookCard(book, inQueue = false) {
     text.appendChild(el('p', 'book-sub', work.series + (work.seriesNumber ? `, Band ${work.seriesNumber}` : '')));
   }
   head.appendChild(text);
+  // Handy: "…" öffnet die Aktionen als Blatt von unten (Desktop zeigt die Knöpfe direkt)
+  const more = el('button', 'row-more');
+  more.type = 'button';
+  more.dataset.action = 'menu';
+  more.setAttribute('aria-label', `Aktionen für „${work.title}“`);
+  more.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
+  head.appendChild(more);
   li.appendChild(head);
 
   const meta = el('div', 'book-meta');
@@ -789,10 +810,12 @@ function bookCard(book, inQueue = false) {
   if (book.rating > 0) {
     meta.appendChild(starsElement(book.rating, isRatingAfterReading(book.status) ? 'Bewertung' : 'Priorität'));
   }
-  li.appendChild(meta);
+  // Handy: Score/Sterne und Stand direkt unter Titel und Autor:in (neben dem Cover)
+  const row = compactLayout.matches ? text : li;
+  row.appendChild(meta);
 
   const progressBox = progressElement(entry);
-  if (progressBox) li.appendChild(progressBox);
+  if (progressBox) (book.status === 'reading' ? li : row).appendChild(progressBox);
 
   const tags = List.genresOf(book);
   if (tags.length) {
@@ -1630,27 +1653,82 @@ els.minScore.addEventListener('change', () => {
   render();
 });
 
-// Bearbeiten/Löschen-Knöpfe in den Karten (ein Listener für die ganze Liste)
-els.list.addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-action]');
-  if (!btn) return;
-  const id = btn.closest('.book').dataset.id;
+// Beim Drehen oder Ändern der Fensterbreite zwischen Zeilen und Karten wechseln
+compactLayout.addEventListener('change', render);
+
+/** Führt eine Aktion für ein Buch aus (aus der Karte oder dem "…"-Menü). */
+function runBookAction(action, id, delta) {
   const book = allBooks().find((b) => b.id === id);
   if (!book) return;
-  if (btn.dataset.action === 'edit') openDialog(book);
-  if (btn.dataset.action === 'progress') openProgress(book);
-  if (btn.dataset.action === 'move') {
-    if (List.moveInQueue(state.entries, id, Number(btn.dataset.delta))) {
+  if (action === 'menu') openRowMenu(book);
+  if (action === 'edit') openDialog(book);
+  if (action === 'progress') openProgress(book);
+  if (action === 'move') {
+    if (List.moveInQueue(state.entries, id, Number(delta))) {
       saveState();
       render();
       // Fokus auf dem Knopf am neuen Platz halten (bequem für mehrfaches Verschieben)
-      const card = els.list.querySelector(`.book[data-id="${id}"] [data-delta="${btn.dataset.delta}"]`);
-      if (card) card.focus();
+      const card = els.list.querySelector(`.book[data-id="${id}"] [data-delta="${delta}"]`);
+      if (card && !compactLayout.matches) card.focus();
     }
   }
-  if (btn.dataset.action === 'delete') {
+  if (action === 'delete') {
     if (confirm(`„${book.title}" wirklich löschen?`)) deleteBook(id);
   }
+}
+
+// Bearbeiten/Löschen-Knöpfe in den Karten (ein Listener für die ganze Liste)
+els.list.addEventListener('click', (e) => {
+  const card = e.target.closest('.book');
+  if (!card) return;
+  const btn = e.target.closest('button[data-action]');
+  if (btn) runBookAction(btn.dataset.action, card.dataset.id, btn.dataset.delta);
+  // Handy: Antippen der Zeile öffnet Bearbeiten
+  else if (compactLayout.matches) runBookAction('edit', card.dataset.id);
+});
+
+/* ---------- "…"-Menü einer Buchzeile (Handy) ---------- */
+const rowMenu = $('rowMenu');
+let rowMenuId = null;
+
+function openRowMenu(book) {
+  rowMenuId = book.id;
+  $('rowMenuTitle').textContent = book.title;
+  const box = $('rowMenuActions');
+  box.innerHTML = '';
+  const add = (label, action, delta, cls = '') => {
+    const b = el('button', 'btn ' + cls, label);
+    b.type = 'button';
+    b.dataset.action = action;
+    if (delta) b.dataset.delta = delta;
+    box.appendChild(b);
+  };
+  if (book.status === 'reading') add('Fortschritt eintragen', 'progress', null, 'btn-primary');
+  add('Bearbeiten', 'edit');
+  if (book.status === 'next') {
+    const pos = book.entry.queuePos;
+    const last = state.entries.filter((x) => x.status === 'next').length;
+    if (pos > 1) add('Nach oben', 'move', '-1');
+    if (pos < last) add('Nach unten', 'move', '1');
+  }
+  add('Löschen', 'delete', null, 'btn-danger');
+  rowMenu.showModal();
+}
+
+$('rowMenuActions').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  rowMenu.close();
+  runBookAction(btn.dataset.action, rowMenuId, btn.dataset.delta);
+});
+$('rowMenuCancel').addEventListener('click', () => rowMenu.close());
+rowMenu.addEventListener('click', (e) => { if (e.target === rowMenu) rowMenu.close(); });
+
+/* ---------- Filter ein-/ausklappen (Handy) ---------- */
+$('filterToggle').addEventListener('click', () => {
+  const toolbar = $('filterToggle').closest('.toolbar');
+  const open = toolbar.classList.toggle('filters-open');
+  $('filterToggle').setAttribute('aria-expanded', String(open));
 });
 
 // Änderungen aus einem anderen Tab übernehmen (gleicher Browser)
