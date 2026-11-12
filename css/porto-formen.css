@@ -1,0 +1,91 @@
+/* Porto-Formen aus dem Castra-Paket (Vorschauseite, Abschnitt tools/forms-porto.css), wortgleich übernommen. Nicht von Hand ändern. */
+/* Eigene Formen von Porto, aus tools/forms-porto.css */
+:root {
+/* Porto-Formen (12.11.2026): ersetzen die Grundformen der Hausstil-Komponenten, sobald Porto gewählt ist.
+   build.mjs hängt diese Datei verschachtelt unter :root an dist/css/tokens-porto.css an, gallery.mjs setzt sie unter die Porto-Vorschau.
+   Eine App mit tokens-porto.css bekommt sie also ohne eigenes Zutun. Braucht CSS-Verschachtelung (Safari 17.2, Chrome 120, Firefox 117).
+   Regeln: keine html- oder body-Selektoren, keine @keyframes (die liegen in components.css). */
+
+/* Gewähltes in der Leiste unten: Tannengrün statt Orange */
+--bar-current:var(--tanne-tint);
+
+/* Karte: ausgestanzte Ecken wie eine Eintrittskarte, federt beim Überfahren */
+.card { border:0; border-radius:0; background:var(--surface); box-shadow:inset 0 0 0 1px var(--line); padding:20px 22px;
+  --n:11px; --cut:#0000 98%, #000;
+  --cm:radial-gradient(circle var(--n) at 0 0, var(--cut)), radial-gradient(circle var(--n) at 100% 0, var(--cut)), radial-gradient(circle var(--n) at 0 100%, var(--cut)), radial-gradient(circle var(--n) at 100% 100%, var(--cut));
+  -webkit-mask:var(--cm); mask:var(--cm); -webkit-mask-composite:source-in; mask-composite:intersect;
+  transition:transform var(--dur-spring) var(--ease-spring); }
+.card:hover { transform:translateY(-3px) rotate(-.4deg); }
+
+/* Hinweis: kleine Abrisskarte, links ein Abschnitt mit Lochreihe und Kerben */
+.note { position:relative; border:0; border-radius:0; padding:14px 18px 14px 48px;
+  --n:9px; --cut:#0000 98%, #000;
+  --nm:radial-gradient(circle var(--n) at 0 0, var(--cut)), radial-gradient(circle var(--n) at 100% 0, var(--cut)), radial-gradient(circle var(--n) at 0 100%, var(--cut)), radial-gradient(circle var(--n) at 100% 100%, var(--cut)),
+       radial-gradient(circle at 32px 50%, #0000 2.2px, #000 2.9px) 0 0/100% 10px no-repeat round,
+       radial-gradient(circle 7px at 32px 0, var(--cut)), radial-gradient(circle 7px at 32px 100%, var(--cut));
+  -webkit-mask:var(--nm); mask:var(--nm); -webkit-mask-composite:source-in; mask-composite:intersect; }
+.note::before { content:""; position:absolute; left:12px; top:50%; width:9px; height:9px; margin-top:-4.5px; border-radius:50%; background:var(--accent); }
+.note.ok::before { background:var(--ok); } .note.warn::before { background:var(--warn); } .note.err::before { background:var(--err); } .note.info::before { background:var(--info); }
+
+/* Trennlinien werden Lochreihen */
+.rule-heavy, hr { border:0; height:8px; background:radial-gradient(circle, var(--line) 2.2px, #0000 2.8px) 0 50%/11px 8px repeat-x; }
+.section { border-bottom:0; padding-bottom:30px; background:radial-gradient(circle, var(--line) 2.2px, #0000 2.8px) 0 100%/11px 8px repeat-x; }
+.runhead { border-bottom:0; background:radial-gradient(circle, var(--line) 2.2px, #0000 2.8px) 0 100%/11px 8px repeat-x, var(--bg); }
+footer { border-top:0; background:radial-gradient(circle, var(--line) 2.2px, #0000 2.8px) 0 0/11px 8px repeat-x; }
+
+/* Abhaken heißt abstempeln: runder Stempel mit Doppelring statt Kästchen */
+.check { border-radius:14px; border-bottom-color:transparent; }
+.check input { width:26px; height:26px; border-radius:50%; border:1.5px solid var(--faint); background:transparent; }
+.check input:checked { border:0; box-shadow:none; background:var(--stempel, var(--accent-text));
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black'%3E%3Ccircle cx='12' cy='12' r='10.6' stroke-width='1.7'/%3E%3Ccircle cx='12' cy='12' r='8.2' stroke-width='.8'/%3E%3Cpath d='M7.6 12.4l3 3 5.8-6.2' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/100% no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black'%3E%3Ccircle cx='12' cy='12' r='10.6' stroke-width='1.7'/%3E%3Ccircle cx='12' cy='12' r='8.2' stroke-width='.8'/%3E%3Cpath d='M7.6 12.4l3 3 5.8-6.2' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/100% no-repeat;
+  transform:rotate(-14deg); animation:p-stamp 420ms var(--ease-spring) both; }
+.check input:checked + span { text-decoration:none; color:var(--muted); }
+.item.done .t > b { text-decoration:none; color:var(--muted); }
+.item.done::after { content:""; flex:none; width:30px; height:30px; background:var(--stempel, var(--accent-text)); transform:rotate(-14deg); opacity:.9;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black'%3E%3Ccircle cx='12' cy='12' r='10.6' stroke-width='1.7'/%3E%3Ccircle cx='12' cy='12' r='8.2' stroke-width='.8'/%3E%3Cpath d='M7.6 12.4l3 3 5.8-6.2' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/100% no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black'%3E%3Ccircle cx='12' cy='12' r='10.6' stroke-width='1.7'/%3E%3Ccircle cx='12' cy='12' r='8.2' stroke-width='.8'/%3E%3Cpath d='M7.6 12.4l3 3 5.8-6.2' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/100% no-repeat; }
+
+/* Bilder, Vorschaubilder und Etiketten bekommen die Kammzähnung */
+.tag, figure .media, .item .thumb {
+  --hole:#0000 var(--h), #000 calc(var(--h) + .6px);
+  --perf:radial-gradient(circle at 0 0, var(--hole)) 0 0/var(--d) 100% round no-repeat,
+         radial-gradient(circle at 100% 0, var(--hole)) 0 0/var(--d) 100% round no-repeat,
+         radial-gradient(circle at 0 100%, var(--hole)) 0 0/var(--d) 100% round no-repeat,
+         radial-gradient(circle at 100% 100%, var(--hole)) 0 0/var(--d) 100% round no-repeat,
+         radial-gradient(circle at 0 0, var(--hole)) 0 0/100% var(--d) no-repeat round,
+         radial-gradient(circle at 0 100%, var(--hole)) 0 0/100% var(--d) no-repeat round,
+         radial-gradient(circle at 100% 0, var(--hole)) 0 0/100% var(--d) no-repeat round,
+         radial-gradient(circle at 100% 100%, var(--hole)) 0 0/100% var(--d) no-repeat round;
+  -webkit-mask:var(--perf); mask:var(--perf); -webkit-mask-composite:source-in; mask-composite:intersect;
+  border:0; border-radius:0; background-color:var(--paper, var(--surface)); }
+.tag { --d:5px; --h:1.5px; padding:6px 9px; color:var(--paper-ink, var(--ink)); }
+.tag.acc { background-color:var(--accent-tint); color:var(--accent-text); }
+.tag.inv { background-color:var(--tanne, var(--ink)); color:var(--tanne-ink, var(--bg)); }
+figure .media { --d:9px; --h:2.8px; padding:10px; aspect-ratio:3/2; }
+figure:has(> .media) { filter:drop-shadow(0 1px 2px var(--shadow-color)) drop-shadow(0 6px 10px var(--shadow-color)); }
+.item .thumb { --d:5px; --h:1.5px; width:40px; height:52px; padding:3px; }
+
+/* Zahlen, Balken, Felder, Knöpfe, Reiter: rund und federnd */
+.kpi { border-top:0; background:var(--surface); border-radius:var(--r-card); padding:14px 16px; }
+.bar { height:8px; border-radius:999px; }
+.bar > span { border-radius:999px; box-shadow:none; transition:width 700ms var(--ease-spring); }
+.field input, .field select { border:1px solid var(--line); border-radius:14px; background:var(--surface); }
+.field input:focus { border-color:var(--accent-text); box-shadow:0 0 0 3px var(--accent-tint); }
+.btn { transition:transform var(--dur-spring) var(--ease-spring), background-color var(--dur-micro), color var(--dur-micro); }
+.btn:active { transform:scale(.94); }
+.tabs [role="tablist"] { display:inline-flex; border-bottom:0; background:var(--sunken); border-radius:999px; padding:4px; gap:2px; max-width:100%; }
+.tabs [role="tab"] { border-bottom:0; margin:0; border-radius:999px; padding:10px 16px; }
+.tabs [role="tab"][aria-selected="true"] { background:var(--surface); box-shadow:0 1px 2px var(--shadow-color); }
+
+/* Sheet: oben abgerissen wie von einem Block */
+dialog.sheet { border-top:0;
+  -webkit-mask:radial-gradient(circle at 50% 0, #0000 3.2px, #000 3.9px) 0 0/13px 100% repeat-x; mask:radial-gradient(circle at 50% 0, #0000 3.2px, #000 3.9px) 0 0/13px 100% repeat-x; }
+
+@media (prefers-reduced-motion:reduce) {
+  .check input:checked { animation:none; }
+  .card, .btn, .bar > span { transition:none; }
+}
+
+}
+
