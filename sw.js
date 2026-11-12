@@ -15,7 +15,7 @@
   Alle Cache-Namen beginnen mit "buecher-tracker-", weil sich alle GitHub-Pages-Seiten
   eines Kontos (NAME.github.io) denselben Speicher teilen. Aufgeräumt werden nur eigene Caches.
 */
-const VERSION = 7;
+const VERSION = 8;
 const PREFIX = 'buecher-tracker-';
 const APP_CACHE = `${PREFIX}app-v${VERSION}`;
 const FONT_CACHE = `${PREFIX}fonts`;
@@ -28,6 +28,8 @@ const APP_FILES = [
   'manifest.webmanifest',
   'css/tokens-porto.css',
   'css/components.css',
+  'css/porto-formen.css',
+  'css/porto-seiten.css',
   'js/theme.js',
   'js/porto.js',
   'js/isbn.js',

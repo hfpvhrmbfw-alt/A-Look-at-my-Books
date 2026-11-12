@@ -22,6 +22,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="css/tokens-porto.css">
   <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/porto-formen.css">
+  <link rel="stylesheet" href="css/porto-seiten.css">
   <!-- Gewähltes Design (System/Hell/Dunkel) vor dem ersten Zeichnen setzen, damit nichts aufblitzt -->
   <script src="js/theme.js"></script>
   <script>Theme.apply(document, Theme.load(window.localStorage));</script>
@@ -39,19 +41,22 @@
   <style>
     /* ------------------------------------------------------------------
        1. DESIGN: Stil Porto aus dem Castra-Designsystem
-       Farben, Schriften, Radien und Schatten kommen aus css/tokens-porto.css,
-       die Grundbausteine (Briefmarke, Stempel, Abrisskarte, Pillen-Umschalter …)
-       aus css/components.css. Beide Dateien bitte nicht von Hand ändern, sondern
-       bei einem Porto-Update einfach ersetzen. Hier steht nur, was die App zusätzlich braucht.
-       Warmes Papier, Orange als einzige Akzentfarbe für die Bedienung,
-       weiche Karten mit Schatten, Knöpfe als Pillen.
-       Tanne, Himmel, Senf und Rosé erscheinen nur in den Motiven der Briefmarken.
+       Aus dem Porto-Paket (nicht von Hand ändern, bei einem Update ersetzen):
+         css/tokens-porto.css  Farben, Schriften, Radien, Schatten (hell und dunkel)
+         css/components.css    Grundbausteine: Briefmarke, Stempel, Abrisskarte, Pillen-Umschalter …
+         css/porto-formen.css  Porto-Formen der Grundbausteine (Etiketten mit Zähnung, runde Felder …)
+         css/porto-seiten.css  Seitenaufbauten: Regal, Detailseite, schwebende Leiste
+       Hier steht nur, was die App zusätzlich braucht.
+       Orange ist die einzige Akzentfarbe der Bedienung; Tanne, Himmel, Senf und Rosé
+       erscheinen nur in Motiven und Mappen.
        Hell- und Dunkelmodus folgen dem System, außer im Kopf ist "Hell" oder "Dunkel"
        gewählt (data-theme auf <html>, siehe js/theme.js).
        ------------------------------------------------------------------ */
     :root {
-      --maxw: 960px;          /* breiter als die Porto-Vorgabe, für zwei Spalten auf dem Desktop */
+      --maxw: 1080px;         /* Regal darf auf dem Desktop breiter werden */
+      --colw: 720px;          /* Detailseite und Formulare: eine ruhige Spalte */
       --r-thumb: 10px;        /* kleine Bilder und Platzhalter */
+      --shelf-min: 140px;     /* Mindestbreite einer Marke im Regal (Handy: zwei Spalten) */
     }
 
     /* "hidden" soll immer ausblenden, auch bei Elementen mit display:flex (Knöpfe, Felder) */
@@ -69,202 +74,165 @@
       line-height: 1.55;
       -webkit-text-size-adjust: 100%;
       -webkit-font-smoothing: antialiased;
-      /* Platz unten für den schwebenden "+"-Knopf auf dem Handy */
-      padding-bottom: calc(96px + env(safe-area-inset-bottom));
+      /* Platz unten für die schwebende Leiste */
+      padding-bottom: calc(110px + env(safe-area-inset-bottom));
     }
 
     h1, h2, h3, .book-title { font-family: var(--serif); font-weight: var(--title-weight); }
     :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 
     /* Kleine Beschriftungen in Versalien (Mono) */
-    .cap, .count, .badge, .chip, .tab, .control > span, .checks-label, .added, .source-note, .status-tag {
+    .cap, .badge, .chip, .control > span, .checks-label, .added, .source-note, .status-tag {
       font-family: var(--mono);
       letter-spacing: .08em;
       text-transform: uppercase;
     }
 
-    /* Kopfzeile: schmale Leiste mit feiner Linie, darunter der Titel */
-    header.app-header {
-      background: var(--bg);
-      border-bottom: 1px solid var(--head-rule);
-      padding-top: env(safe-area-inset-top);
-    }
-    .header-inner {
+    /* Seitenrahmen: Kopf und Ansichten in derselben Breite, nicht unter Notch/Kamerainsel */
+    .app-head, .view {
       max-width: var(--maxw);
       margin: 0 auto;
-      padding: 0 16px;
-      min-height: 52px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
+      padding-left: max(16px, env(safe-area-inset-left));
+      padding-right: max(16px, env(safe-area-inset-right));
     }
-    .app-name { font-size: 12px; letter-spacing: .12em; white-space: nowrap; }
-    header .count { color: var(--muted); font-size: 12px; letter-spacing: .12em; }
+    .app-head { padding-top: calc(10px + env(safe-area-inset-top)); }
+    .head-btns { display: flex; align-items: center; gap: 4px; margin-right: -10px; }
+    .head-btns .iconbtn { margin: 0; }
+    .iconbtn .icon { width: 22px; height: 22px; stroke-width: 1.75; }
+    .iconbtn .icon .icon-fill { fill: currentColor; stroke: none; }
+    .iconbtn[aria-expanded="true"] { background: var(--sunken); }
 
-    .hero { max-width: var(--maxw); margin: 0 auto; padding: 40px 16px 0; }
-    .hero h1 {
-      margin: 0;
-      font-size: clamp(36px, 7vw, 64px);
-      line-height: 1;
-      letter-spacing: -.02em;
-      border-left: 0;
-      padding-left: 0;
-    }
-    .hero .subtitle { margin: 12px 0 0; font-size: 12px; letter-spacing: .12em; color: var(--muted); }
-    .hero .subtitle .sep { color: var(--faint); padding: 0 .6em; }
-    .rule-heavy { border: 0; border-top: 1px solid var(--line); margin: 28px 0 0; }
+    /* ---------- Regal ---------- */
+    .p-top .bigstat { color: var(--ink); }
+    .views { max-width: 520px; }
+    .views [role="tab"] { min-height: 40px; padding: 0 6px; white-space: nowrap; }
+    .views [role="tab"][aria-selected="true"] { color: var(--ink); }
+    @media (hover: hover) { .views [role="tab"]:hover { color: var(--ink); } }
 
-    main { max-width: var(--maxw); margin: 0 auto; padding: 16px; }
-
-    /* Suche + Filter bleiben beim Scrollen oben sichtbar */
-    .toolbar {
-      position: sticky;
-      top: 0;
-      z-index: 5;
-      background: var(--bg);
-      padding: 16px 0 12px;
-      margin: -16px 0 20px;
-      border-bottom: 1px solid var(--line);
+    /* Suche + Filter (nach Antippen der Lupe) */
+    .toolbar { padding: 4px 0 0; }
+    .search-row { display: flex; gap: 8px; align-items: center; }
+    .search-row .search { flex: 1; min-width: 0; margin: 12px 0 0; }
+    .search-row .filter-toggle { margin-top: 12px; }
+    .filter-toggle { border-width: 0; background: var(--sunken); min-height: 44px; }
+    .filter-panel { display: none; padding-top: 6px; }
+    .toolbar.filters-open .filter-panel { display: block; }
+    .toolbar.filters-open .filter-toggle { background: var(--ink); color: var(--bg); }
+    .filter-count {
+      margin-left: 2px; min-width: 20px; padding: 3px 6px; line-height: 1; border-radius: var(--r-control);
+      background: var(--accent); color: var(--accent-ink); font-size: 11px;
     }
 
-    /* Auf dem Handy wäre die Leiste mit allen Filtern zu hoch zum Mitscrollen */
-    @media (max-width: 599px) {
-      .toolbar { position: static; }
-      .hero { padding-top: 24px; }
-      /* Mono-Schrift ist breiter: Knöpfe etwas schmaler, damit drei in eine Zeile passen */
-      .book-actions .btn { font-size: 12px; padding: 8px 12px; }
-      .book { padding-left: 16px; padding-right: 16px; }
-      /* "Hinzugefügt am" in eigene Zeile, damit die Knöpfe nebeneinander bleiben */
-      .added { flex-basis: 100%; }
-    }
-
-    /* Eingabefelder wie in components.css: helle Fläche, feiner Rahmen, kräftige Unterkante */
-    .field input, .field select, .field textarea, .control select {
-      font: inherit;
-      font-size: 16px;
-      color: var(--ink);
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-bottom: 2px solid var(--ink);
-      border-radius: var(--r-control-s) var(--r-control-s) 0 0;
-      padding: 10px 12px;
-      width: 100%;
-      min-height: 44px;
-    }
-    .field input:focus, .field select:focus, .field textarea:focus, .control select:focus {
-      outline: none;
-      border-bottom-color: var(--accent-text);
-    }
-    /* Suche als Pille auf versenkter Fläche (Porto-Suche) */
-    input.search {
-      display: block;
-      font: 16px var(--sans);
-      color: var(--ink);
-      background: var(--sunken);
-      border: 0;
-      border-radius: var(--r-control);
-      padding: 0 20px;
-      min-height: 48px;
-      width: 100%;
-      margin: 14px 0 0;
-    }
-    input.search::placeholder { color: var(--muted); }
-    input.search:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--accent-text); }
-    input[type="checkbox"] { accent-color: var(--accent); }
-
-    /* Filter-Chips: Pillen, auf dem Handy waagerecht wischbar */
-    .filters {
-      display: flex;
-      gap: 6px;
-      overflow-x: auto;
-      padding: 10px 0 2px;
-      scrollbar-width: none;
-    }
+    /* Filter-Chips: Pillen, waagerecht wischbar */
+    .filters { display: flex; gap: 6px; overflow-x: auto; padding: 10px 0 2px; scrollbar-width: none; }
     .filters::-webkit-scrollbar { display: none; }
     .chip {
-      flex: 0 0 auto;
-      border: 1px solid var(--line);
-      background: var(--surface);
-      color: var(--ink);
-      border-radius: var(--r-control);
-      padding: 8px 14px;
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      min-height: 40px;
+      flex: 0 0 auto; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+      border-radius: var(--r-control); padding: 8px 14px; font-size: 12px; font-weight: 500; cursor: pointer; min-height: 40px;
     }
     @media (hover: hover) { .chip:hover { background: var(--sunken); } }
     .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
     .chip .n { color: inherit; opacity: .7; margin-left: 6px; }
 
-    /* Bücherliste; Gruppen werden per CSS-Zähler durchnummeriert (№ 01, № 02 …) */
-    .book-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px; counter-reset: grp; }
-    @media (min-width: 700px) {
-      .book-list { grid-template-columns: 1fr 1fr; }
-    }
+    /* Sortierung und weitere Filter */
+    .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-top: 10px; }
+    .control { display: flex; flex-direction: column; color: var(--muted); gap: 4px; min-width: 0; }
+    .control > span { font-size: 11px; font-weight: 600; }
 
-    /* Buchkarte: weiche Karte mit Schatten */
-    .book {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: var(--r-card);
-      box-shadow: var(--shadow);
-      padding: 18px 18px 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      min-width: 0;
-    }
+    /* Das Regal selbst: Raster aus Marken (Porto .shelf); Gruppen-Überschriften und
+       die "Lese gerade"-Abrisskarte gehen über die ganze Breite */
+    .shelf { list-style: none; padding: 0; margin: 22px 0 0; counter-reset: grp; }
+    .shelf > li { min-width: 0; }
+    .shelf > .wide { grid-column: 1 / -1; }
 
-    .book-title { font-size: 1.3rem; margin: 0; line-height: 1.2; overflow-wrap: anywhere; }
+    /* Gruppen-Überschriften (Lese gerade / Als Nächstes / Backlog): Porto-Eyebrow mit laufender Nummer */
+    .group-head { counter-increment: grp; margin: 10px 0 -8px; }
+    .group-head:first-child { margin-top: 0; }
+    .group-head h2 {
+      margin: 0; font: 600 12px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    }
+    .group-head h2::before { content: "№ " counter(grp, decimal-leading-zero) " · "; color: var(--accent-text); }
+
+    /* Marke im Regal: Knopf mit Bild oder Motiv, Titel, Autor:in und rechts eine Angabe */
+    .shelf .stamp { --stamp-pad: 9px; --d: 8px; --h: 2.5px; }
+    .shelf .stamp-sub > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stamp-title { overflow-wrap: anywhere; }
+
+    /* "Lese gerade" als Abrisskarte (.ticket aus components.css): kleine Marke, Titel, Balken, Knopf.
+       Eigene Klasse .ticket-content statt .ticket-main, weil .ticket-main alle span/b darin umformatiert. */
+    .now { cursor: pointer; }
+    .now .ticket-body { --stub: 54px; }
+    .ticket-content {
+      padding: 16px 6px 16px 16px; min-width: 0;
+      display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 14px; align-items: center;
+    }
+    .now .stamp { width: 66px; --stamp-pad: 5px; --d: 6px; --h: 1.9px; align-self: start; }
+    .now-text { min-width: 0; display: grid; gap: 2px; }
+    .now-text .book-title { font-size: 1.25rem; line-height: 1.2; margin: 0; }
+    .now-text .book-author { font-size: .95rem; }
+    .now-foot { grid-column: 1 / -1; display: flex; align-items: end; gap: 12px; margin-top: 12px; }
+    .now-foot .progress { flex: 1; min-width: 0; }
+    .now-foot .btn-primary { min-height: 46px; padding: 10px 16px; }
+    .ticket .ticket-stub { font-size: 11px; }
+    .ticket .progress-bar { background: color-mix(in srgb, var(--surface) 70%, transparent); }
+
     .book-author { color: var(--muted); margin: 0; overflow-wrap: anywhere; }
+    .book-sub { color: var(--muted); font-size: 0.9rem; margin: 0; overflow-wrap: anywhere; }
+
+    /* Leerer Zustand */
+    .empty { text-align: center; color: var(--muted); padding: 48px 16px; }
+    .empty h2 { color: var(--ink); font-size: 1.6rem; }
+    .empty strong { color: var(--ink); }
+
+    /* ---------- Detailseite ---------- */
+    #viewDetail { max-width: calc(var(--colw) + 32px); }
+    .detail-hero .stamp { cursor: default; }
+    .detail-hero .stamp .stamp-img { aspect-ratio: 2 / 3; }
+    .detail-meta { overflow-wrap: anywhere; }
+    .detail-info { display: grid; gap: 10px; margin: 18px 0 0; }
+    .detail-info .book-meta { justify-content: center; }
+    .detail-info .tags { justify-content: center; }
+    .detail-notes { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface); border-radius: var(--r-card); padding: 14px 16px; margin: 0; }
+    .detail-notes::before { content: "Notizen"; display: block; font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+    .detail-added { text-align: center; color: var(--muted); font-size: 11px; }
+    .p-actions .btn { width: 100%; min-height: 48px; font-size: 14px; }
+    .p-actions .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .ticket .ticket-main .bar { display: block; }
+    @media (min-width: 600px) {
+      .p-actions { grid-template-columns: 1fr 1fr; }
+      .p-actions .row2 { grid-column: 1 / -1; }
+    }
+
     .book-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
     .badge {
-      font-size: 11px;
-      font-weight: 500;
-      line-height: 1;
-      border: 1px solid var(--ink);
-      border-radius: var(--r-control-s);
-      padding: 4px 7px;
-      white-space: nowrap;
+      font-size: 11px; font-weight: 500; line-height: 1; border: 1px solid var(--ink);
+      border-radius: var(--r-control-s); padding: 4px 7px; white-space: nowrap;
     }
-    .book[data-status="reading"] .badge:first-child { border-color: var(--accent-text); color: var(--accent-text); }
     .badge-format { border-color: var(--line); color: var(--muted); white-space: normal; }
     .badge-score { background: var(--ink); border-color: var(--ink); color: var(--bg); }
     .stars-display { color: var(--accent); letter-spacing: 1px; }
     .stars-display .off { color: var(--line); }
-    .book-notes {
-      margin: 4px 0 0;
-      color: var(--ink);
-      font-size: 0.95rem;
-      white-space: pre-wrap;       /* Zeilenumbrüche in Notizen erhalten */
-      overflow-wrap: anywhere;
-      border-top: 1px solid var(--line);
-      padding-top: 8px;
-    }
-    .book-actions {
-      display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 12px;
-      justify-content: flex-end; border-top: 1px solid var(--line);
-    }
-    .added { color: var(--muted); font-size: 11px; margin-right: auto; align-self: center; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    /* .tag bekommt Zähnung und Papier aus porto-formen.css */
+    .tag { font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
 
-    /* Knöpfe: Pillen mit feinem Rand */
+    /* ---------- Schwebende Leiste (Porto .dock) ---------- */
+    .app-dock { position: fixed; left: 0; right: 0; bottom: calc(14px + env(safe-area-inset-bottom)); margin: 0; z-index: 15; }
+    .pillbar .icon { width: 20px; height: 20px; }
+    .fab .icon { width: 26px; height: 26px; stroke-width: 2.2; }
+    @media (hover: hover) { .fab:hover { background: var(--accent-hover); } }
+    @media (hover: hover) { .pillbar button:not([aria-pressed="true"]):hover { background: rgb(255 255 255 / .12); } }
+
+    /* Ansichtswechsel: neue Seite gleitet herein (Bewegung „Gleiten“ aus components.css) */
+    .view.enter { animation: page-in var(--dur-page) var(--ease-glide) both; }
+
+    /* Knöpfe: Pillen mit feinem Rand (federn per porto-formen.css) */
     .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      font: 600 13px/1 var(--mono);
-      letter-spacing: .04em;
-      border-radius: var(--r-control);
-      border: var(--btn-border) solid var(--ink);
-      background: transparent;
-      color: var(--ink);
-      padding: 8px 16px;
-      min-height: 40px;
-      cursor: pointer;
-      text-decoration: none;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      font: 600 13px/1 var(--mono); letter-spacing: .04em;
+      border-radius: var(--r-control); border: var(--btn-border) solid var(--ink);
+      background: transparent; color: var(--ink);
+      padding: 8px 16px; min-height: 40px; cursor: pointer; text-decoration: none;
     }
     @media (hover: hover) { .btn:hover { background: var(--ink); color: var(--bg); } }
     .btn-primary { background: var(--accent); border-color: var(--accent-edge); color: var(--accent-ink); }
@@ -272,32 +240,24 @@
     .btn-danger { color: var(--err); border-color: var(--err); }
     @media (hover: hover) { .btn-danger:hover { background: var(--err); border-color: var(--err); color: var(--bg); } }
 
-    /* Runder "+"-Knopf unten rechts (gut mit dem Daumen erreichbar) */
-    .fab {
-      position: fixed;
-      right: calc(20px + env(safe-area-inset-right));
-      bottom: calc(20px + env(safe-area-inset-bottom));
-      width: 60px;
-      height: 60px;
-      display: grid;
-      place-items: center;
-      border-radius: 50%;
-      border: 0;
-      background: var(--accent);
-      color: var(--accent-ink);
-      box-shadow: var(--shadow);
-      cursor: pointer;
-      z-index: 10;
-      transition: transform var(--dur-spring) var(--ease-spring);
+    /* Eingabefelder wie in porto-formen.css: runde helle Felder mit Fokusring.
+       porto-formen.css deckt nur .field input/select ab; Textfelder und die Auswahl im Regal ziehen hier nach. */
+    .field input, .field select, .field textarea, .control select {
+      font: inherit;
+      font-size: 16px;
+      color: var(--ink);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 12px;
+      width: 100%;
+      min-height: 44px;
     }
-    .fab .icon { width: 28px; height: 28px; stroke-width: 2.2; }
-    @media (hover: hover) { .fab:hover { background: var(--accent-hover); transform: rotate(90deg); } }
-
-    /* Leerer Zustand */
-    .empty { text-align: center; color: var(--muted); padding: 48px 16px; border-top: 1px solid var(--line); }
-    .empty h2 { color: var(--ink); font-size: 1.6rem; }
-    .empty strong { color: var(--ink); }
-
+    .field input:focus, .field select:focus, .field textarea:focus, .control select:focus {
+      outline: none;
+      border-color: var(--accent-text);
+      box-shadow: 0 0 0 3px var(--accent-tint);
+    }
     /* Formular-Dialog: auf dem Handy als Blatt von unten, auf dem Desktop mittig */
     dialog {
       border: 1px solid var(--line);
@@ -357,31 +317,16 @@
     .star-input button.on { color: var(--accent); }
     .star-input .hint { font-size: 0.85rem; color: var(--muted); margin-left: 8px; }
 
-    /* Ansicht-Umschalter (Leseliste / Archiv / Alle): Porto-Pillen mit gleitender Markierung.
-       Die Reiter sind role="tab" mit aria-selected statt aria-pressed. */
-    .views { max-width: 520px; }
-    .views .tab { min-height: 40px; padding: 0 6px; white-space: nowrap; letter-spacing: .02em; text-transform: none; font-family: var(--sans); }
-    .views .tab[aria-selected="true"] { color: var(--ink); }
-    @media (hover: hover) { .views .tab:hover { color: var(--ink); } }
-
-    /* "Lese gerade" als Abrisskarte (.ticket aus components.css). Der Inhalt steckt in
-       .ticket-content (eigene Klasse, weil .ticket-main alle span/b darin umformatiert). */
-    .book.ticket { background: none; border: 0; border-radius: 0; box-shadow: none; padding: 0; display: block; }
-    .book.ticket .ticket-body { --stub: 54px; height: 100%; }
-    .ticket-content { padding: 20px 8px 16px 22px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-    .ticket .ticket-stub { font-size: 11px; }
-    .ticket .book-actions { border-top-color: color-mix(in srgb, var(--accent-text) 25%, transparent); }
-    .ticket .progress-bar { background: color-mix(in srgb, var(--surface) 70%, transparent); }
-    .ticket .badge-format { border-color: color-mix(in srgb, var(--accent-text) 30%, transparent); }
-
     /* Formular: zwei Felder nebeneinander, einklappbare Abschnitte */
     .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
     .field-row > .field { min-width: 0; }
     .field-hint { font-size: 0.85rem; color: var(--muted); margin: 0; min-height: 1em; }
     .field-hint.bad { color: var(--err); }
     /* details.section: components.css gibt .section/details eigene Abstände, hier zurücksetzen */
-    details.section { border-top: 0; border-bottom: 1px solid var(--line); margin: 0; padding: 0; }
-    details.section:first-of-type, .field + details.section { border-top: 1px solid var(--line); }
+    /* Einklappbare Abschnitte, getrennt durch Lochreihen (wie Trennlinien in porto-formen.css).
+       .dialog-form davor, damit die Regel stärker ist als :root .section aus porto-formen.css */
+    .dialog-form details.section { border: 0; margin: 0; padding: 0 0 8px; background: radial-gradient(circle, var(--line) 2.2px, #0000 2.8px) 0 100%/11px 8px repeat-x; }
+    .dialog-form details.section:first-of-type, .dialog-form .field + details.section { padding-top: 8px; background: radial-gradient(circle, var(--line) 2.2px, #0000 2.8px) 0 0/11px 8px repeat-x, radial-gradient(circle, var(--line) 2.2px, #0000 2.8px) 0 100%/11px 8px repeat-x; }
     details.section:last-of-type, details.section:has(+ .field), details.section + .field { margin-bottom: 16px; }
     details.section + .field { margin-top: 16px; }
     details.section > summary {
@@ -399,79 +344,19 @@
     details.section > .section-body { padding: 4px 4px 8px; color: inherit; }
     .checks-label { font-size: 12px; color: var(--muted); }
     .checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-    .checks label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 0.95rem; min-height: 32px; }
-    .checks input { width: auto; }
-
-    /* Kleine Zusatzangaben auf der Karte */
-    .book-sub { color: var(--muted); font-size: 0.9rem; margin: -4px 0 0; overflow-wrap: anywhere; }
-    .tags { display: flex; flex-wrap: wrap; gap: 4px; }
-    .tag {
-      font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
-      border: 1px solid var(--line); border-radius: var(--r-control); padding: 4px 8px; color: var(--muted);
-    }
-
-    /* Kopfzeile rechts: Zähler, Design-Schalter, Einstellungen */
-    .header-right { display: flex; align-items: center; gap: 12px; }
-    .icon-btn {
-      background: none; border: 0; color: var(--ink); cursor: pointer;
-      font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
-      min-height: 44px; padding: 0 4px;
-      text-decoration: underline; text-decoration-color: var(--accent);
-      text-decoration-thickness: 2px; text-underline-offset: 4px;
-    }
-    @media (hover: hover) { .icon-btn:hover { color: var(--accent-text); } }
-    .header-right .count, .icon-btn { white-space: nowrap; }
-    /* Auf dem Handy nur "System"/"Hell"/"Dunkel" zeigen, damit die Kopfzeile einzeilig bleibt
-       (der volle Text steht im aria-label) */
-    @media (max-width: 599px) {
-      .theme-prefix { display: none; }
-      .header-inner, .header-right { gap: 8px; }
-    }
-    /* Schmale iPhones: Buchzahl ausblenden (steht auch in den Reitern), damit nichts umbricht */
-    @media (max-width: 419px) {
-      header .count { display: none; }
-    }
-
-    /* Sortierung und weitere Filter */
-    .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-top: 10px; }
-    .control { display: flex; flex-direction: column; color: var(--muted); gap: 4px; min-width: 0; }
-    .control > span { font-size: 11px; font-weight: 600; }
-    .control select { padding: 8px; } /* 16px Schrift, sonst zoomt das iPhone beim Antippen */
-
-    /* Gruppen-Überschriften (Lese gerade / Als Nächstes / Backlog) im Porto-Label-Stil:
-       Mono-Versalien in Tinte, die laufende Nummer in Orange */
-    .group-head { grid-column: 1 / -1; list-style: none; margin: 20px 0 -6px; counter-increment: grp; }
-    .group-head:first-child { margin-top: 0; }
-    .group-head h2 {
-      display: inline-block; margin: 0;
-      color: var(--label-fg);
-      font: var(--label-weight) var(--label-size)/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase;
-    }
-    .group-head h2::before { content: "№ " counter(grp, decimal-leading-zero) " · "; color: var(--label-no-fg); }
-    .queue-btns { display: flex; align-items: center; gap: 4px; margin-right: auto; }
-    .queue-btns .btn { min-width: 44px; padding: 8px; }
-    .queue-pos { font: 700 1.3rem/1 var(--serif); color: var(--ink); margin-right: 4px; }
+    /* Häkchen als Stempel (.check aus components.css + porto-formen.css) */
+    .checks { display: grid; gap: 0; }
+    .checks .check, .check-line.check { padding: 8px 4px; font-size: 0.95rem; color: var(--ink); }
 
     /* Fortschrittsbalken und Verlauf */
     .push-left { margin-right: auto; }
     .progress { display: flex; flex-direction: column; gap: 4px; }
-    .progress-bar { height: 8px; background: var(--sunken); border-radius: var(--r-control-s); overflow: hidden; }
-    .progress-bar > span { display: block; height: 100%; background: var(--accent); border-radius: var(--r-control-s); }
+    .progress-bar { height: 8px; background: var(--sunken); border-radius: 999px; overflow: hidden; }
+    .progress-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width 700ms var(--ease-spring); }
     .progress-text { font-size: 0.85rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 12px; }
     .progress-log { list-style: none; padding: 0; margin: 0 0 8px; font-size: 0.85rem; color: var(--muted); max-height: 140px; overflow-y: auto; }
     .progress-log li { padding: 4px 0; border-bottom: 1px solid var(--line); }
 
-    /* Cover */
-    .book-head { display: flex; gap: 14px; align-items: flex-start; }
-    .book-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-    /* Cover als Briefmarke (.stamp aus components.css), mit Porto-Motiv, wenn kein Bild da ist.
-       Kleine Marken bekommen feinere Zähnung und weniger Rand. */
-    .cover-stamp {
-      flex: 0 0 auto; width: 72px; --stamp-pad: 5px; --d: 6px; --h: 1.9px;
-      --pm-size: 62px; --pm-right: -12px; --pm-top: 44px;
-    }
-    .cover-stamp .stamp-img { border-radius: 1px; }
-    .cover-stamp > svg.stamp-img { height: auto; }
     .cover-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
     .cover-preview { width: 72px; border-radius: var(--r-thumb); box-shadow: var(--shadow); }
     .cover-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -484,11 +369,8 @@
 
     /* Metadaten-Vorschläge */
     .enrich-errors { margin: 0 0 8px; padding-left: 18px; color: var(--err); font-size: 0.85rem; }
-    .enrich-note {
-      border-left: 4px solid var(--accent); background: var(--accent-tint);
-      border-radius: 0 var(--r-card) var(--r-card) 0;
-      padding: 12px 16px; font-size: 0.9rem; margin-bottom: 12px;
-    }
+    /* Hinweis als kleine Abrisskarte (.note aus porto-formen.css) */
+    .enrich-note { background: var(--accent-tint); font-size: 0.9rem; margin: 0 0 12px; }
     .edition-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
     .edition-option {
       display: flex; gap: 12px; width: 100%; text-align: left; font: inherit; color: inherit;
@@ -592,13 +474,9 @@
     html:has(dialog[open]) { overflow: hidden; }
 
     /* Seitenränder im Querformat: nicht unter Notch/Kamerainsel */
-    .header-inner, .hero, main {
-      padding-left: max(16px, env(safe-area-inset-left));
-      padding-right: max(16px, env(safe-area-inset-right));
-    }
 
     /* Bedienelemente: kein Markieren/Kontextmenü bei langem Druck, kein Doppeltipp-Zoom */
-    button, .btn, .chip, .tab, .fab, .icon-btn, .btn-link, summary, .checks label, .check-line {
+    button, .btn, .chip, .fab, .iconbtn, .btn-link, summary, .check, .check-line {
       -webkit-user-select: none;
       user-select: none;
       -webkit-touch-callout: none;
@@ -617,7 +495,7 @@
     @media (pointer: coarse) {
       /* Antippbare Flächen mindestens 44 px hoch (Apple-Empfehlung) */
       .btn, .chip, .control select { min-height: 44px; }
-      .checks label, .check-line { min-height: 44px; }
+      .check, .check-line { min-height: 44px; }
       .toast button { min-height: 44px; padding: 12px 8px; }
       .btn-link { min-height: 44px; }
     }
@@ -625,7 +503,7 @@
       /* Rückmeldung beim Antippen statt "hängenbleibendem" Hover */
       .btn:active, .chip:active, details.section > summary:active, .edition-option:active { background: var(--sunken); }
       .btn-primary:active, .fab:active { background: var(--accent-hover); border-color: var(--accent-hover); }
-      .tab:active, .icon-btn:active, .btn-link:active { color: var(--accent-text); }
+      .iconbtn:active, .btn-link:active { color: var(--accent-text); }
     }
 
     /* Federndes Anheben der Marken nur mit Maus, nicht beim Antippen */
@@ -637,116 +515,18 @@
     }
 
     /* ------------------------------------------------------------------
-       Desktop: Handy-Elemente ausblenden
-       ------------------------------------------------------------------ */
-    .icon-btn .icon, .filter-toggle, .row-more, .row-pos { display: none; }
-    .search-row { display: flex; gap: 8px; align-items: stretch; }
-    .search-row .search { flex: 1; min-width: 0; }
-    .filter-count {
-      margin-left: 2px; min-width: 20px; padding: 3px 6px; line-height: 1; border-radius: var(--r-control);
-      background: var(--accent); color: var(--accent-ink); font-size: 11px;
-    }
-    .sheet-actions { display: grid; gap: 8px; }
-    .sheet-actions .btn { min-height: 48px; font-size: 14px; }
-
-    /* ------------------------------------------------------------------
-       HANDY (unter 600 px): luftiger, nach dem Vorbild ruhiger Lese-Apps.
-       Ein großer Titel, Segment-Schalter, Suche mit Filter-Knopf,
-       "Lese gerade" als Weiterlesen-Karte, alle anderen Bücher als Zeilen.
+       HANDY (unter 600 px): Regal mit zwei Spalten, Blätter von unten
+       mit oben abgerissener Kante (wie dialog.sheet in porto-formen.css)
        ------------------------------------------------------------------ */
     @media (max-width: 599px) {
-      body { padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
-
-      /* Kopf: nur zwei Symbol-Knöpfe, rechts neben dem großen Titel */
-      header.app-header {
-        position: absolute; top: 0; right: 0; left: 0;
-        background: none; border: 0; z-index: 6; pointer-events: none;
+      .p-title { font-size: 40px; }
+      .controls { grid-template-columns: 1fr 1fr; }
+      .controls .control:last-child { grid-column: 1 / -1; }
+      dialog {
+        -webkit-mask: radial-gradient(circle at 50% 0, #0000 3.2px, #000 3.9px) 0 0/13px 100% repeat-x;
+        mask: radial-gradient(circle at 50% 0, #0000 3.2px, #000 3.9px) 0 0/13px 100% repeat-x;
+        border-radius: 0; border: 0;
       }
-      .header-inner { justify-content: flex-end; min-height: 0; padding-top: 18px; }
-      .header-right { pointer-events: auto; gap: 4px; }
-      .app-name, .icon-btn .btn-text { display: none; }
-      .icon-btn {
-        display: inline-flex; align-items: center; justify-content: center;
-        width: 44px; height: 44px; padding: 0; text-decoration: none; border-radius: 50%;
-      }
-      .icon-btn .icon { display: block; }
-      .icon-btn .icon .icon-fill { fill: currentColor; stroke: none; }
-
-      .hero { padding-top: calc(24px + env(safe-area-inset-top)); padding-right: 112px; }
-      .hero h1 {
-        font-size: 34px; line-height: 1.15;
-        white-space: nowrap;
-      }
-      .hero .subtitle, .rule-heavy { display: none; }
-
-      main { padding-top: 20px; }
-      .toolbar { margin: -20px 0 8px; padding: 20px 0 8px; border-bottom: 0; }
-
-      .views { max-width: none; }
-
-      /* Suche mit Filter-Knopf; Chips und Auswahlfelder erst nach Antippen */
-      .search-row { margin-top: 14px; }
-      input.search { margin-top: 0; }
-      .filter-toggle { display: inline-flex; min-height: 48px; padding: 8px 16px; border: 0; background: var(--sunken); }
-      .filter-panel { display: none; padding-top: 6px; }
-      .toolbar.filters-open .filter-panel { display: block; }
-      .toolbar.filters-open .filter-toggle { background: var(--ink); color: var(--bg); }
-
-      /* Gruppen-Überschriften: kleine Versalien */
-      .book-list { gap: 0; }
-      .group-head { margin: 24px 0 4px; }
-      .group-head:first-child { margin-top: 8px; }
-      .group-head h2 { color: var(--muted); font-size: 12px; letter-spacing: .1em; }
-
-      /* Buch als Zeile: Cover, Titel, Autor:in, eine Zusatzzeile, rechts "…" */
-      .book {
-        background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none;
-        padding: 14px 0; gap: 6px; cursor: pointer;
-      }
-      .book-head { gap: 14px; align-items: flex-start; }
-      .book-head-text { gap: 2px; padding-top: 2px; }
-      .book-title { font-size: 1.1rem; line-height: 1.25; }
-      .book-author { font-size: 0.95rem; }
-      .book-sub { margin: 0; font-size: 0.85rem; }
-      .cover-stamp { width: 50px; --stamp-pad: 4px; --d: 5px; --h: 1.5px; --pm-size: 46px; --pm-right: -10px; --pm-top: 30px; }
-      .row-pos { display: block; flex: 0 0 auto; min-width: 22px; padding-top: 2px; font: 700 1.1rem/1.25 var(--serif); }
-      .row-more {
-        display: flex; align-items: center; justify-content: center; flex: 0 0 auto;
-        width: 44px; height: 44px; margin: -8px -10px 0 0; border-radius: 50%;
-        background: none; border: 0; color: var(--muted); cursor: pointer;
-      }
-      .row-more svg { width: 20px; height: 20px; fill: currentColor; }
-
-      .book-head-text > .book-meta, .book-head-text > .progress, .book-head-text > .progress-text { margin-top: 6px; }
-      /* In der Zeile reichen Score und Sterne; Status, Format, Tags, Notizen und Knöpfe stehen im Bearbeiten-Dialog bzw. im "…"-Menü */
-      .book-meta .badge:not(.badge-score), .book > .tags, .book > .book-notes, .book > .book-actions,
-      .ticket-content > .tags, .ticket-content > .book-notes { display: none; }
-      .book-meta:not(:has(.badge-score, .stars-display)) { display: none; }
-      .badge-score { font-size: 10px; padding: 3px 6px; }
-
-      /* "Lese gerade": Abrisskarte mit Marke, Balken und großem Fortschritt-Knopf */
-      .book.ticket { margin-bottom: 8px; border: 0; padding: 0; cursor: pointer; }
-      .ticket-content {
-        padding: 16px 4px 16px 16px;
-        display: grid; grid-template-columns: 1fr auto; column-gap: 12px; align-items: end;
-      }
-      .ticket-content > * { grid-column: 1 / -1; }
-      .ticket .cover-stamp { width: 66px; --stamp-pad: 5px; --d: 6px; --h: 1.9px; }
-      .ticket .book-title { font-size: 1.3rem; }
-      .ticket-content > .book-meta { display: none; }
-      .ticket-content > .progress { grid-column: 1; margin: 8px 0 0; }
-      .ticket-content > .book-actions {
-        display: flex; grid-column: 2; margin: 0; padding: 0; border: 0; align-self: end;
-      }
-      .ticket-content > .book-actions .btn:not(.btn-primary) { display: none; }
-      .ticket-content > .book-actions .btn-primary { min-height: 48px; padding: 10px 16px; font-size: 13px; }
-      .ticket .row-more { margin-right: 0; }
-
-      .empty { border-top: 0; }
-
-      /* Aktionsmenü als Blatt von unten */
-      .action-sheet .dialog-form h2 { font-size: 1.3rem; }
-      .action-sheet .dialog-actions .btn { flex: 1; min-height: 48px; }
     }
 </style>
 </head>
@@ -757,33 +537,39 @@
        Die Bücherliste wird per JavaScript in <ul id="bookList"> gefüllt.
        ==================================================================== -->
 
-  <header class="app-header">
-    <div class="header-inner">
-      <span class="cap app-name">Bücher-Tracker</span>
-      <span class="header-right">
-        <span class="count" id="totalCount"></span>
-        <!-- Design-Schalter: System → Hell → Dunkel; Beschriftung zeigt die aktuelle Wahl -->
-        <!-- Auf dem Handy nur als Symbol (SVG, kein Emoji); der Text steht dann im aria-label -->
-        <button type="button" class="icon-btn" id="themeBtn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" class="icon-fill"/></svg><span class="btn-text"><span class="theme-prefix">Design: </span><span id="themeLabel">System</span></span></button>
-        <button type="button" class="icon-btn" id="settingsBtn" aria-label="Einstellungen"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.5M12 18v2.5M3.5 12H6M18 12h2.5M6 6l1.8 1.8M16.2 16.2L18 18M18 6l-1.8 1.8M7.8 16.2L6 18"/></svg><span class="btn-text">Einstellungen</span></button>
+  <!-- Kopf (Porto .p-head): links Lesejahr, rechts Suche, Design-Schalter und Einstellungen -->
+  <header class="app-head">
+    <div class="p-head">
+      <span class="eyebrow" id="yearLabel">Meine Bücher</span>
+      <span class="head-btns">
+        <button type="button" class="iconbtn" id="searchBtn" aria-label="Suchen" aria-expanded="false" aria-controls="toolbar"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></button>
+        <!-- Design-Schalter: System → Hell → Dunkel; die aktuelle Wahl steht im aria-label -->
+        <button type="button" class="iconbtn" id="themeBtn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" class="icon-fill"/></svg><span class="visually-hidden" id="themeLabel">System</span></button>
+        <button type="button" class="iconbtn" id="settingsBtn" aria-label="Einstellungen"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.5M12 18v2.5M3.5 12H6M18 12h2.5M6 6l1.8 1.8M16.2 16.2L18 18M18 6l-1.8 1.8M7.8 16.2L6 18"/></svg></button>
       </span>
     </div>
   </header>
 
-  <section class="hero">
-    <h1>Meine Bücher</h1>
-    <div class="subtitle cap">Lesen<span class="sep">·</span>Planen<span class="sep">·</span>Sammeln</div>
-    <hr class="rule-heavy">
-  </section>
+  <!-- ====================================================================
+       Regal (Startseite, #regal): alle Bücher als Briefmarken im Raster
+       ==================================================================== -->
+  <main class="view" id="viewRegal">
+    <div class="p-top">
+      <h1 class="p-title">Regal</h1>
+      <div class="n"><div class="p-hint" id="readYearHint">gelesen</div><b class="bigstat" id="readCount">0</b></div>
+    </div>
 
-  <main>
-    <div class="toolbar">
-      <!-- Ansicht: offene Bücher (Leseliste), Archiv (Gelesen/Abgebrochen) oder alle -->
-      <div class="pillseg views" id="views" role="tablist" aria-label="Ansicht"></div>
-      <label for="search" class="visually-hidden">Suche nach Titel, Autor:in, Reihe oder ISBN</label>
+    <!-- Ansicht: offene Bücher (Leseliste), Archiv (Gelesen/Abgebrochen) oder alle -->
+    <div class="pillseg views" id="views" role="tablist" aria-label="Ansicht"></div>
+
+    <!-- Suche und Filter: erst nach Antippen der Lupe sichtbar (bleibt offen, solange etwas gesucht oder gefiltert wird) -->
+    <div class="toolbar" id="toolbar" hidden>
       <div class="search-row">
-        <input id="search" class="search" type="search" placeholder="Titel, Autor:in, Reihe, ISBN …" autocomplete="off">
-        <!-- Nur auf dem Handy: blendet Chips und Auswahlfelder ein und aus -->
+        <label class="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+          <span class="visually-hidden">Suche nach Titel, Autor:in, Reihe oder ISBN</span>
+          <input id="search" type="search" placeholder="Titel, Autor:in, Reihe, ISBN …" autocomplete="off">
+        </label>
         <button type="button" class="btn filter-toggle" id="filterToggle" aria-expanded="false" aria-controls="filterPanel">Filter<span class="filter-count" id="filterCount" hidden></span></button>
       </div>
       <div class="filter-panel" id="filterPanel">
@@ -814,11 +600,24 @@
       </div>
     </div>
 
-    <ul class="book-list" id="bookList" aria-live="polite"></ul>
+    <!-- Bücher werden per JavaScript eingefügt: Gruppen-Überschriften, "Lese gerade" als Abrisskarte, sonst Marken -->
+    <ul class="shelf book-list" id="bookList" aria-live="polite"></ul>
     <div class="empty" id="emptyState" hidden></div>
   </main>
 
-  <button class="fab" id="addBtn" type="button" aria-label="Buch hinzufügen" title="Buch hinzufügen"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  <!-- ====================================================================
+       Detailseite (#buch/<id>): ein Buch groß als Marke, Fakten, Stand, Aktionen
+       Inhalt wird per JavaScript gefüllt (renderDetail in js/app.js).
+       ==================================================================== -->
+  <main class="view" id="viewDetail" hidden></main>
+
+  <!-- Schwebende Leiste unten (Porto .dock): Bereiche und rechts der runde Plus-Knopf -->
+  <nav class="dock app-dock" aria-label="Bereiche">
+    <div class="pillbar" id="pillbar">
+      <button type="button" data-go="regal" aria-pressed="true"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M9.5 4v16M14 5.5l4.5 14"/><path d="M3 20h18"/></svg>Regal</button>
+    </div>
+    <button class="fab" id="addBtn" type="button" aria-label="Buch hinzufügen" title="Buch hinzufügen"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  </nav>
 
   <!-- Dialog zum Hinzufügen und Bearbeiten (dasselbe Formular für beides).
        Die einklappbaren Abschnitte (Werk, Ausgaben, Besonderheiten) werden per JavaScript
@@ -945,7 +744,7 @@
       <h2 id="enrichTitle">Metadaten-Vorschläge</h2>
       <p class="field-hint" id="enrichStatus" role="status"></p>
       <ul class="enrich-errors" id="enrichErrors"></ul>
-      <div id="enrichSpecial" class="enrich-note" hidden></div>
+      <div id="enrichSpecial" class="note enrich-note" hidden></div>
       <ul class="edition-list" id="editionList" aria-label="Gefundene Ausgaben"></ul>
       <div id="fieldView" hidden>
         <button type="button" class="btn-link" id="backToEditions">← andere Ausgabe wählen</button>
@@ -1018,15 +817,15 @@
 
       <h3 class="settings-head">Metadaten-Suche</h3>
       <div class="checks" id="sourceChecks">
-        <label><input type="checkbox" value="dnb"> Deutsche Nationalbibliothek</label>
-        <label><input type="checkbox" value="googlebooks"> Google Books</label>
-        <label><input type="checkbox" value="openlibrary"> Open Library</label>
+        <label class="check"><input type="checkbox" value="dnb"><span>Deutsche Nationalbibliothek</span></label>
+        <label class="check"><input type="checkbox" value="googlebooks"><span>Google Books</span></label>
+        <label class="check"><input type="checkbox" value="openlibrary"><span>Open Library</span></label>
       </div>
       <div class="field field-spaced">
         <label for="googleKey">Google-Books-API-Key (optional, bleibt nur in diesem Browser)</label>
         <input id="googleKey" type="text" autocomplete="off" spellcheck="false">
       </div>
-      <label class="check-line"><input type="checkbox" id="autoEnrich"> Beim Speichern einer neuen ISBN automatisch suchen</label>
+      <label class="check-line check"><input type="checkbox" id="autoEnrich"><span>Beim Speichern einer neuen ISBN automatisch suchen</span></label>
       <button type="button" class="btn" id="clearCacheBtn">Zwischenspeicher leeren</button>
 
       <h3 class="settings-head">Daten sichern und übertragen</h3>
@@ -1054,17 +853,6 @@
         <button type="submit" class="btn btn-primary">Speichern</button>
       </div>
     </form>
-  </dialog>
-
-  <!-- Handy: Aktionen eines Buchs ("…" in der Zeile), als Blatt von unten -->
-  <dialog id="rowMenu" class="action-sheet" aria-labelledby="rowMenuTitle">
-    <div class="dialog-form">
-      <h2 id="rowMenuTitle"></h2>
-      <div class="sheet-actions" id="rowMenuActions"></div>
-      <div class="dialog-actions">
-        <button type="button" class="btn" id="rowMenuCancel">Abbrechen</button>
-      </div>
-    </div>
   </dialog>
 
   <!-- Meldung mit "Rückgängig" nach dem Löschen -->

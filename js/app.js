@@ -37,8 +37,6 @@ let enrichResult = null;     // letztes Suchergebnis (Ausgaben, Fehler …)
 let enrichRows = [];         // Feldzeilen der gewählten Ausgabe
 let enrichEdition = null;    // gewählte Ausgabe
 const coverBlobs = new Map(); // Cover-URL der Quelle -> heruntergeladenes Bild (Promise)       // ID des Eintrags im Fortschritt-Dialog
-// Handy-Layout (unter 600 px): Buchzeilen statt Karten, siehe CSS in index.html
-const compactLayout = window.matchMedia('(max-width: 599px)');
 let lastDeleted = null;      // für "Rückgängig" nach dem Löschen
 let toastTimer = null;
 
@@ -88,7 +86,6 @@ const els = {
   fieldTable: $('fieldTable'),
   enrichAllBtn: $('enrichAllBtn'),
   enrichApplyBtn: $('enrichApplyBtn'),
-  total: $('totalCount'),
   dialog: $('bookDialog'),
   form: $('bookForm'),
   dialogTitle: $('dialogTitle'),
@@ -631,6 +628,11 @@ function chip(className, dataKey, key, label, count, pressed) {
   return btn;
 }
 
+/** Wie viele Filter (Status, Format, Genre, Mindestscore) sind gesetzt? */
+function filterActiveCount() {
+  return [activeFilter !== 'all', activeFormat !== 'all', Boolean(activeGenre), minScore != null].filter(Boolean).length;
+}
+
 /** Baut Ansicht-Tabs, Status- und Format-Chips inkl. Anzahl. */
 function renderFilters() {
   const books = allBooks();
@@ -673,8 +675,8 @@ function renderFilters() {
   els.genre.value = genres.find((g) => List.normalize(g) === List.normalize(activeGenre)) || '';
   els.sort.value = state.settings.sort;
 
-  // Handy: Zahl der aktiven Filter am Filter-Knopf
-  const active = [activeFilter !== 'all', activeFormat !== 'all', Boolean(activeGenre), minScore != null].filter(Boolean).length;
+  // Zahl der aktiven Filter am Filter-Knopf
+  const active = filterActiveCount();
   $('filterCount').textContent = active;
   $('filterCount').hidden = active === 0;
 
@@ -763,9 +765,9 @@ function progressElement(entry) {
 
 /* ---------- Cover als Briefmarke (Stil Porto) ---------- */
 
-// Zuletzt gezeichneter Status je Buch: wechselt ein Buch auf Gelesen/Abgebrochen,
-// schlägt der Poststempel beim nächsten Zeichnen einmal sichtbar auf.
-const lastStatus = new Map();
+// Zuletzt gezeichneter Status je Buch und Ansicht: wechselt ein Buch auf Gelesen/Abgebrochen,
+// schlägt der Poststempel beim nächsten Zeichnen dieser Ansicht einmal sichtbar auf.
+const lastStatus = { regal: new Map(), detail: new Map() };
 
 /** Festes Motiv je Werk (aus der Id berechnet), damit es beim Neuzeichnen nicht wechselt. */
 function motifFor(id) {
@@ -774,15 +776,21 @@ function motifFor(id) {
   return Porto.motifs[h % Porto.motifs.length];
 }
 
+/** Ist das Buch abgeschlossen (bekommt einen Poststempel)? */
+function isDone(status) {
+  return status === 'read' || status === 'dropped';
+}
+
 /**
  * Briefmarke mit Zähnung: Cover der Ausgabe (aus IndexedDB) oder ein Porto-Motiv.
  * Gelesene und abgebrochene Bücher bekommen einen Poststempel mit dem Enddatum.
- * Rein dekorativ (aria-hidden); Titel und Status stehen als Text daneben.
+ * opts.tag: 'span' (Standard) oder 'button'; opts.big: großer Stempel mit Wellen;
+ * opts.scope: 'regal' oder 'detail' (für das einmalige Aufschlagen des Stempels).
  */
-function coverStamp(book) {
+function coverStamp(book, { tag = 'span', big = false, scope = 'regal', className = '' } = {}) {
   const { entry, work } = book;
-  const stamp = el('span', 'stamp lift cover-stamp');
-  stamp.setAttribute('aria-hidden', 'true');
+  const stamp = el(tag, `stamp ${className}`.trim());
+  if (tag === 'span') stamp.setAttribute('aria-hidden', 'true');
   // Motiv sofort zeigen, ein gespeichertes Cover ersetzt es, sobald es geladen ist
   stamp.innerHTML = Porto.motif(motifFor(work.id));
   const coverId = coverIdOf(entry);
@@ -795,157 +803,132 @@ function coverStamp(book) {
       stamp.querySelector('.stamp-img').replaceWith(img);
     });
   }
-  const done = book.status === 'read' || book.status === 'dropped';
-  if (done) {
+  if (isDone(book.status)) {
     const end = entry.progress.endDate;
     const d = end ? new Date(end + 'T00:00:00') : null;
     stamp.insertAdjacentHTML('beforeend', Porto.postmark({
       top: book.status === 'read' ? 'GELESEN' : 'ABGEBROCHEN',
+      bottom: big ? 'BÜCHERREGAL' : '',
       date: d ? d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '',
       year: d ? String(d.getFullYear()) : '',
-      waves: false,
+      waves: big,
     }));
-    const before = lastStatus.get(book.id);
-    if (before && before !== 'read' && before !== 'dropped') {
+    const before = lastStatus[scope].get(book.id);
+    if (before && !isDone(before)) {
       // gerade abgeschlossen: Stempel erst nach dem Einfügen setzen, damit er aufschlägt
       requestAnimationFrame(() => requestAnimationFrame(() => stamp.classList.add('is-stamped')));
     } else {
       stamp.classList.add('is-stamped');
     }
   }
-  lastStatus.set(book.id, book.status);
+  lastStatus[scope].set(book.id, book.status);
   return stamp;
 }
 
-/** Erzeugt die Karte für ein einzelnes Buch. */
-function bookCard(book, inQueue = false) {
-  // Hinweis: Alle Texte werden per textContent gesetzt, nie per innerHTML.
-  // So kann ein Titel wie "<b>" die Seite nicht durcheinanderbringen.
-  const { entry, work } = book;
-  const li = el('li', 'book');
-  li.dataset.status = book.status;
-  if (inQueue) li.dataset.queue = 'true';
+/** Zusatzangabe rechts unter der Marke: Platz und Score in der Leseliste, sonst die Seitenzahl. */
+function stampInfo(book, inQueue) {
+  const pages = totalPagesOf(book.entry);
+  if (isDone(book.status)) return pages ? `${pages} S.` : '';
+  const score = scoreOf(book);
+  const parts = [];
+  if (inQueue && book.entry.queuePos) parts.push(`Nº ${book.entry.queuePos}`);
+  if (score != null) parts.push(formatScore(score));
+  else if (pages) parts.push(`${pages} S.`);
+  return parts.join(' · ');
+}
+
+/** Eine Marke im Regal: Knopf, der die Detailseite öffnet. */
+function shelfItem(book, inQueue = false) {
+  const li = el('li', 'shelf-item');
   li.dataset.id = book.id;
-
-  // Kopf: Cover (falls lokal gespeichert) und Titelangaben
-  const head = el('div', 'book-head');
-  // Handy: Platz in der Warteschlange vorn in der Zeile
-  if (inQueue) head.appendChild(el('span', 'row-pos', `${entry.queuePos}.`));
-  head.appendChild(coverStamp(book));
-  const text = el('div', 'book-head-text');
-  text.appendChild(el('h3', 'book-title', work.title));
-  if (work.subtitle) text.appendChild(el('p', 'book-sub', work.subtitle));
-  if (book.author) text.appendChild(el('p', 'book-author', book.author));
-  if (work.series) {
-    text.appendChild(el('p', 'book-sub', work.series + (work.seriesNumber ? `, Band ${work.seriesNumber}` : '')));
-  }
-  head.appendChild(text);
-  // Handy: "…" öffnet die Aktionen als Blatt von unten (Desktop zeigt die Knöpfe direkt)
-  const more = el('button', 'row-more');
-  more.type = 'button';
-  more.dataset.action = 'menu';
-  more.setAttribute('aria-label', `Aktionen für „${work.title}“`);
-  more.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
-  head.appendChild(more);
-  li.appendChild(head);
-
-  const meta = el('div', 'book-meta');
-  meta.appendChild(el('span', 'badge', STATUSES[book.status] || book.status));
-  meta.appendChild(el('span', 'badge badge-format', formatLabel(entry)));
-  const score = isRatingAfterReading(book.status) ? null : scoreOf(book);
-  if (score != null) {
-    const b = el('span', 'badge badge-score', 'Score ' + formatScore(score));
-    b.title = 'Score aus Priorität und Teilkriterien (1–5)';
-    meta.appendChild(b);
-  }
-  if (book.rating > 0) {
-    meta.appendChild(starsElement(book.rating, isRatingAfterReading(book.status) ? 'Bewertung' : 'Priorität'));
-  }
-  // Handy: Score/Sterne und Stand direkt unter Titel und Autor:in (neben dem Cover)
-  const row = compactLayout.matches ? text : li;
-  row.appendChild(meta);
-
-  const progressBox = progressElement(entry);
-  if (progressBox) (book.status === 'reading' ? li : row).appendChild(progressBox);
-
-  const tags = List.genresOf(book);
-  if (tags.length) {
-    const box = el('div', 'tags');
-    for (const t of tags) box.appendChild(el('span', 'tag', t));
-    li.appendChild(box);
-  }
-
-  if (entry.notes) li.appendChild(el('p', 'book-notes', entry.notes));
-
-  const actions = el('div', 'book-actions');
-  const added = el('span', 'added', 'Hinzugefügt am ' + new Date(entry.addedAt).toLocaleDateString('de-DE'));
-  const editBtn = el('button', 'btn', 'Bearbeiten');
-  editBtn.type = 'button';
-  editBtn.dataset.action = 'edit';
-  const delBtn = el('button', 'btn btn-danger', 'Löschen');
-  delBtn.type = 'button';
-  delBtn.dataset.action = 'delete';
-  if (book.status === 'reading') {
-    // Beim aktuellen Buch ist "Fortschritt" wichtiger als das Hinzufügedatum
-    const pBtn = el('button', 'btn btn-primary push-left', 'Fortschritt');
-    pBtn.type = 'button';
-    pBtn.dataset.action = 'progress';
-    actions.append(pBtn, editBtn, delBtn);
-  } else if (inQueue) {
-    // Manuelle Reihenfolge der Warteschlange: Platz + Hoch/Runter statt Datum
-    const q = el('div', 'queue-btns');
-    q.appendChild(el('span', 'queue-pos', `${entry.queuePos}.`));
-    for (const [delta, label, text] of [[-1, 'Nach oben', '↑'], [1, 'Nach unten', '↓']]) {
-      const b = el('button', 'btn', text);
-      b.type = 'button';
-      b.dataset.action = 'move';
-      b.dataset.delta = delta;
-      b.setAttribute('aria-label', label);
-      q.appendChild(b);
-    }
-    actions.append(q, editBtn, delBtn);
-  } else {
-    actions.append(added, editBtn, delBtn);
-  }
-  li.appendChild(actions);
-
-  // "Lese gerade" als Abrisskarte (Porto .ticket): Inhalt links, Abschnitt mit dem Stand rechts
-  if (book.status === 'reading') {
-    const pct = Progress.percentOf(entry.progress, totalPagesOf(entry));
-    const body = el('div', 'ticket-body');
-    const content = el('div', 'ticket-content');
-    content.append(...li.childNodes);
-    const stub = el('div', 'ticket-stub', pct != null ? `${Math.round(pct)} % gelesen` : 'Lese gerade');
-    stub.setAttribute('aria-hidden', 'true');
-    body.append(content, stub);
-    li.appendChild(body);
-    li.classList.add('ticket');
-  }
-
+  const stamp = coverStamp(book, { tag: 'button', big: true, className: 'lift' });
+  stamp.type = 'button';
+  stamp.dataset.open = book.id;
+  stamp.setAttribute('aria-label', `${book.title}${book.author ? ' von ' + book.author : ''}, ${STATUSES[book.status] || ''}. Details öffnen`);
+  const cap = el('span', 'stamp-cap');
+  cap.appendChild(el('span', 'stamp-title', book.title));
+  const sub = el('span', 'stamp-sub');
+  sub.appendChild(el('span', null, book.author));
+  const info = stampInfo(book, inQueue);
+  if (info) sub.appendChild(el('b', null, info));
+  cap.appendChild(sub);
+  // Bildunterschrift vor den Stempel, damit der Stempel oben liegt
+  stamp.insertBefore(cap, stamp.querySelector('.postmark'));
+  li.appendChild(stamp);
   return li;
 }
 
-/** Zeichnet Filter, Liste und Zähler neu. Wird nach jeder Änderung aufgerufen. */
-function render() {
+/** "Lese gerade" als Abrisskarte: kleine Marke, Titel, Stand und Fortschritt-Knopf. */
+function nowTicket(book) {
+  const { entry } = book;
+  const li = el('li', 'wide ticket now');
+  li.dataset.id = book.id;
+  li.dataset.open = book.id;
+  const pct = Progress.percentOf(entry.progress, totalPagesOf(entry));
+  const body = el('div', 'ticket-body');
+  const content = el('div', 'ticket-content');
+  content.appendChild(coverStamp(book));
+  const text = el('div', 'now-text');
+  text.appendChild(el('h3', 'book-title', book.title));
+  if (book.author) text.appendChild(el('p', 'book-author', book.author));
+  content.appendChild(text);
+  const foot = el('div', 'now-foot');
+  const progressBox = progressElement(entry);
+  if (progressBox) foot.appendChild(progressBox);
+  const pBtn = el('button', 'btn btn-primary', 'Fortschritt');
+  pBtn.type = 'button';
+  pBtn.dataset.action = 'progress';
+  pBtn.dataset.id = book.id;
+  foot.appendChild(pBtn);
+  content.appendChild(foot);
+  const stub = el('div', 'ticket-stub', pct != null ? `${Math.round(pct)} % gelesen` : 'Lese gerade');
+  stub.setAttribute('aria-hidden', 'true');
+  body.append(content, stub);
+  li.appendChild(body);
+  return li;
+}
+
+/** Wie viele Bücher wurden im laufenden Jahr gelesen (Enddatum in diesem Jahr)? */
+function readThisYear() {
+  const year = String(new Date().getFullYear());
+  return state.entries.filter((e) => e.status === 'read' && (e.progress.endDate || '').startsWith(year)).length;
+}
+
+/** Zeichnet das Regal: Filter, Zähler, Gruppen, Abrisskarte und Marken. */
+function renderRegal() {
   renderFilters();
-  const count = state.entries.length;
-  els.total.textContent = count === 1 ? '1 Buch' : `${count} Bücher`;
+  const year = new Date().getFullYear();
+  $('yearLabel').textContent = `Lesejahr ${year}`;
+  $('readYearHint').textContent = `gelesen ${year}`;
+  const count = readThisYear();
+  const counter = $('readCount');
+  if (counter.textContent !== String(count)) {
+    if (counter.dataset.ready) Porto.countTo(counter, count, 400);
+    else counter.textContent = count;
+  }
+  counter.dataset.ready = '1';
 
   const list = visibleBooks();
   els.list.innerHTML = '';
   for (const group of groupedBooks(list)) {
     if (group.title) {
-      const head = el('li', 'group-head');
-      head.appendChild(el('h2', null, `${group.title} (${group.books.length})`));
+      const head = el('li', 'wide group-head');
+      head.appendChild(el('h2', null, `${group.title} · ${group.books.length}`));
       els.list.appendChild(head);
     }
-    for (const book of group.books) els.list.appendChild(bookCard(book, Boolean(group.queue)));
+    for (const book of group.books) {
+      els.list.appendChild(book.status === 'reading' && activeView !== 'archive' ? nowTicket(book) : shelfItem(book, Boolean(group.queue)));
+    }
   }
 
+  // Suche/Filter offen halten, solange etwas gesucht oder gefiltert wird
+  if (searchTerm || filterActiveCount()) setToolbarOpen(true);
+
   // Hinweis anzeigen, wenn nichts zu sehen ist
+  const total = state.entries.length;
   if (list.length === 0) {
     els.empty.hidden = false;
-    if (count === 0) {
+    if (total === 0) {
       els.empty.innerHTML =
         '<h2>Dein Regal ist noch leer</h2>' +
         '<p>Tippe auf <strong>+</strong>, um dein erstes Buch hinzuzufügen.</p>';
@@ -958,6 +941,213 @@ function render() {
   } else {
     els.empty.hidden = true;
   }
+}
+
+/* ---------- Detailseite ---------- */
+
+/** Tage seit Beginn (bis Ende oder heute), null ohne Beginn. */
+function readingDays(p) {
+  if (!p.startDate) return null;
+  const end = p.endDate ? new Date(p.endDate + 'T00:00:00') : new Date(Progress.today() + 'T00:00:00');
+  const days = Math.round((end - new Date(p.startDate + 'T00:00:00')) / 86400000) + 1;
+  return days > 0 ? days : null;
+}
+
+function fact(value, label) {
+  const d = el('div');
+  d.appendChild(el('b', null, value == null || value === '' ? '–' : String(value)));
+  d.appendChild(el('span', null, label));
+  return d;
+}
+
+function actionBtn(label, action, cls = '', extra = {}) {
+  const b = el('button', 'btn ' + cls, label);
+  b.type = 'button';
+  b.dataset.action = action;
+  Object.assign(b.dataset, extra);
+  return b;
+}
+
+/** Zeichnet die Detailseite eines Buchs (#buch/<id>). */
+function renderDetail(id) {
+  const view = $('viewDetail');
+  const book = allBooks().find((b) => b.id === id);
+  view.innerHTML = '';
+  if (!book) return false;
+  const { entry, work } = book;
+  const p = entry.progress;
+  const pages = totalPagesOf(entry);
+  const pct = Progress.percentOf(p, pages);
+  view.dataset.id = id;
+
+  // Kopf: zurück, Status als Eyebrow, rechts Bearbeiten
+  const head = el('div', 'p-head');
+  const back = el('button', 'iconbtn');
+  back.type = 'button';
+  back.dataset.action = 'back';
+  back.setAttribute('aria-label', 'Zurück zum Regal');
+  back.innerHTML = Porto.icon('zurueck');
+  head.appendChild(back);
+  head.appendChild(el('span', 'eyebrow', STATUSES[book.status] || ''));
+  const edit = el('button', 'iconbtn');
+  edit.type = 'button';
+  edit.dataset.action = 'edit';
+  edit.setAttribute('aria-label', 'Bearbeiten');
+  edit.innerHTML = Porto.icon('buch');
+  head.appendChild(edit);
+  view.appendChild(head);
+
+  // Große Marke, neigt sich zum Finger (Porto.tilt)
+  const hero = el('div', 'detail-hero');
+  const stamp = coverStamp(book, { big: true, scope: 'detail' });
+  stamp.dataset.tilt = '';
+  hero.appendChild(stamp);
+  view.appendChild(hero);
+  Porto.tilt(stamp, 12);
+
+  view.appendChild(el('h1', 'detail-title', book.title));
+  const meta = [book.author, work.year].filter(Boolean).join(' · ');
+  if (meta) view.appendChild(el('p', 'detail-meta', meta));
+  if (work.subtitle) view.appendChild(el('p', 'detail-meta', work.subtitle));
+  if (work.series) view.appendChild(el('p', 'detail-meta', work.series + (work.seriesNumber ? `, Band ${work.seriesNumber}` : '')));
+
+  // Drei Fakten: Seiten, gelesen bzw. Score, Tage bzw. Platz
+  const facts = el('div', 'facts');
+  const started = book.status === 'reading' || isDone(book.status) || pct != null;
+  facts.appendChild(fact(pages, 'Seiten'));
+  if (started) {
+    facts.appendChild(fact(pct != null ? `${Math.round(pct)} %` : null, 'gelesen'));
+    facts.appendChild(fact(readingDays(p), 'Tage'));
+  } else {
+    const score = scoreOf(book);
+    facts.appendChild(fact(score != null ? formatScore(score) : null, 'Score'));
+    facts.appendChild(fact(book.status === 'next' ? `Nº ${entry.queuePos}` : null, book.status === 'next' ? 'Warteschlange' : 'Platz'));
+  }
+  view.appendChild(facts);
+
+  // Stand als Abrisskarte (beim aktuellen Buch oder wenn schon ein Stand da ist)
+  if (book.status === 'reading' || (!isDone(book.status) && pct != null)) {
+    const t = el('div', 'ticket');
+    const body = el('div', 'ticket-body');
+    const main = el('div', 'ticket-main');
+    main.appendChild(el('small', null, 'Fortschritt'));
+    main.appendChild(el('b', null, p.page != null ? `Seite ${p.page}` : (pct != null ? `${Math.round(pct)} %` : 'noch kein Stand')));
+    const bar = el('div', 'bar');
+    bar.setAttribute('role', 'img');
+    bar.setAttribute('aria-label', `${Math.round(pct || 0)} Prozent`);
+    const fill = el('span');
+    fill.style.width = `${pct || 0}%`;
+    bar.appendChild(fill);
+    main.appendChild(bar);
+    const last = Progress.lastReadAt(p);
+    const days = Progress.estimateDaysLeft(p, pages);
+    const line = [last ? `zuletzt ${formatDate(last)}` : '', days ? `noch ca. ${days} ${days === 1 ? 'Tag' : 'Tage'}` : ''].filter(Boolean).join(' · ');
+    if (line) main.appendChild(el('span', null, line));
+    body.appendChild(main);
+    const left = pages && p.page != null ? Math.max(0, pages - p.page) : null;
+    body.appendChild(el('div', 'ticket-stub', left != null ? `noch ${left}` : 'Lese ich'));
+    t.appendChild(body);
+    view.appendChild(t);
+  } else if (isDone(book.status)) {
+    const done = progressElement(entry);
+    if (done) { done.classList.add('detail-added'); view.appendChild(done); }
+  }
+
+  // Aktionen
+  const actions = el('div', 'p-actions');
+  if (book.status === 'reading') actions.appendChild(actionBtn('Fortschritt eintragen', 'progress', 'btn-primary'));
+  if (!isDone(book.status)) actions.appendChild(actionBtn('Als gelesen stempeln', 'stamp', book.status === 'reading' ? '' : 'btn-primary'));
+  if (book.status === 'next') {
+    const last = state.entries.filter((x) => x.status === 'next').length;
+    const row = el('div', 'row2');
+    const up = actionBtn('Nach oben', 'move', '', { delta: '-1' });
+    const down = actionBtn('Nach unten', 'move', '', { delta: '1' });
+    up.disabled = entry.queuePos <= 1;
+    down.disabled = entry.queuePos >= last;
+    row.append(up, down);
+    actions.appendChild(row);
+  }
+  const row = el('div', 'row2');
+  row.append(actionBtn('Bearbeiten', 'edit'), actionBtn('Löschen', 'delete', 'btn-danger'));
+  actions.appendChild(row);
+  view.appendChild(actions);
+
+  // Weitere Angaben: Status, Format, Score, Sterne, Tags, Notizen
+  const info = el('div', 'detail-info');
+  const badges = el('div', 'book-meta');
+  badges.appendChild(el('span', 'badge', STATUSES[book.status] || book.status));
+  badges.appendChild(el('span', 'badge badge-format', formatLabel(entry)));
+  const score = isRatingAfterReading(book.status) ? null : scoreOf(book);
+  if (score != null) badges.appendChild(el('span', 'badge badge-score', 'Score ' + formatScore(score)));
+  if (book.rating > 0) badges.appendChild(starsElement(book.rating, isRatingAfterReading(book.status) ? 'Bewertung' : 'Priorität'));
+  info.appendChild(badges);
+  const tags = List.genresOf(book);
+  if (tags.length) {
+    const box = el('div', 'tags');
+    for (const t of tags) box.appendChild(el('span', 'tag', t));
+    info.appendChild(box);
+  }
+  if (entry.notes) info.appendChild(el('p', 'detail-notes', entry.notes));
+  info.appendChild(el('p', 'detail-added', 'Hinzugefügt am ' + new Date(entry.addedAt).toLocaleDateString('de-DE')));
+  view.appendChild(info);
+  return true;
+}
+
+/* ---------- Ansichten und Adressen (#regal, #buch/<id>) ---------- */
+
+let currentRoute = { view: 'regal', id: null };
+let navigatedInApp = false;   // true, sobald innerhalb der App navigiert wurde (dann führt "Zurück" per history.back())
+
+function parseRoute() {
+  const m = location.hash.match(/^#buch\/(.+)$/);
+  if (m) return { view: 'detail', id: decodeURIComponent(m[1]) };
+  return { view: 'regal', id: null };
+}
+
+function go(hash) {
+  navigatedInApp = true;
+  if (location.hash === hash) showRoute();
+  else location.hash = hash;
+}
+
+function goBack() {
+  if (navigatedInApp && history.length > 1) history.back();
+  else location.hash = '#regal';
+}
+
+/** Zeigt die Ansicht zur aktuellen Adresse. */
+function showRoute() {
+  const route = parseRoute();
+  const changed = route.view !== currentRoute.view || route.id !== currentRoute.id;
+  currentRoute = route;
+  if (route.view === 'detail' && !renderDetail(route.id)) {
+    // Buch gibt es nicht (mehr): zurück ins Regal
+    history.replaceState(null, '', '#regal');
+    currentRoute = { view: 'regal', id: null };
+  }
+  const views = { regal: $('viewRegal'), detail: $('viewDetail') };
+  for (const [key, node] of Object.entries(views)) {
+    const show = key === currentRoute.view;
+    if (show && changed) Porto.replay(node, 'enter');
+    node.hidden = !show;
+  }
+  // Detailseite hat ihren eigenen Kopf (zurück, Status, Bearbeiten)
+  document.querySelector('.app-head').hidden = currentRoute.view === 'detail';
+  document.querySelectorAll('#pillbar [data-go]').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.go === (currentRoute.view === 'detail' ? 'regal' : currentRoute.view)));
+  });
+  if (changed) window.scrollTo(0, 0);
+}
+
+window.addEventListener('hashchange', showRoute);
+
+/** Zeichnet alle Ansichten neu. Wird nach jeder Änderung aufgerufen.
+ *  Die Detailseite zuerst, damit ihr Stempel nach "Als gelesen stempeln" aufschlägt. */
+function render() {
+  if (currentRoute.view === 'detail' && !renderDetail(currentRoute.id)) {
+    showRoute();
+  }
+  renderRegal();
 }
 
 /* ====================================================================
@@ -1727,22 +1917,22 @@ els.minScore.addEventListener('change', () => {
 });
 
 // Beim Drehen oder Ändern der Fensterbreite zwischen Zeilen und Karten wechseln
-compactLayout.addEventListener('change', render);
-
-/** Führt eine Aktion für ein Buch aus (aus der Karte oder dem "…"-Menü). */
+/** Führt eine Aktion für ein Buch aus (Regal oder Detailseite). */
 function runBookAction(action, id, delta) {
+  if (action === 'back') { goBack(); return; }
   const book = allBooks().find((b) => b.id === id);
   if (!book) return;
-  if (action === 'menu') openRowMenu(book);
+  if (action === 'open') go(`#buch/${encodeURIComponent(id)}`);
   if (action === 'edit') openDialog(book);
   if (action === 'progress') openProgress(book);
+  if (action === 'stamp') stampAsRead(book);
   if (action === 'move') {
     if (List.moveInQueue(state.entries, id, Number(delta))) {
       saveState();
       render();
       // Fokus auf dem Knopf am neuen Platz halten (bequem für mehrfaches Verschieben)
-      const card = els.list.querySelector(`.book[data-id="${id}"] [data-delta="${delta}"]`);
-      if (card && !compactLayout.matches) card.focus();
+      const btn = $('viewDetail').querySelector(`[data-delta="${delta}"]:not([disabled])`);
+      if (btn) btn.focus();
     }
   }
   if (action === 'delete') {
@@ -1750,54 +1940,51 @@ function runBookAction(action, id, delta) {
   }
 }
 
-// Bearbeiten/Löschen-Knöpfe in den Karten (ein Listener für die ganze Liste)
-els.list.addEventListener('click', (e) => {
-  const card = e.target.closest('.book');
-  if (!card) return;
-  const btn = e.target.closest('button[data-action]');
-  if (btn) runBookAction(btn.dataset.action, card.dataset.id, btn.dataset.delta);
-  // Handy: Antippen der Zeile öffnet Bearbeiten
-  else if (compactLayout.matches) runBookAction('edit', card.dataset.id);
-});
-
-/* ---------- "…"-Menü einer Buchzeile (Handy) ---------- */
-const rowMenu = $('rowMenu');
-let rowMenuId = null;
-
-function openRowMenu(book) {
-  rowMenuId = book.id;
-  $('rowMenuTitle').textContent = book.title;
-  const box = $('rowMenuActions');
-  box.innerHTML = '';
-  const add = (label, action, delta, cls = '') => {
-    const b = el('button', 'btn ' + cls, label);
-    b.type = 'button';
-    b.dataset.action = action;
-    if (delta) b.dataset.delta = delta;
-    box.appendChild(b);
-  };
-  if (book.status === 'reading') add('Fortschritt eintragen', 'progress', null, 'btn-primary');
-  add('Bearbeiten', 'edit');
-  if (book.status === 'next') {
-    const pos = book.entry.queuePos;
-    const last = state.entries.filter((x) => x.status === 'next').length;
-    if (pos > 1) add('Nach oben', 'move', '-1');
-    if (pos < last) add('Nach unten', 'move', '1');
-  }
-  add('Löschen', 'delete', null, 'btn-danger');
-  rowMenu.showModal();
+/** "Als gelesen stempeln": Status Gelesen, 100 %, Enddatum heute; der Stempel schlägt auf. */
+function stampAsRead(book) {
+  const entry = book.entry;
+  entry.status = 'read';
+  Model.setSource(entry, 'status', 'manual');
+  Progress.markRead(entry.progress, totalPagesOf(entry), Progress.today());
+  saveState();
+  render();
+  showToast(`„${book.title}" gestempelt`);
 }
 
-$('rowMenuActions').addEventListener('click', (e) => {
+// Regal: Antippen einer Marke oder der Abrisskarte öffnet die Detailseite, Knöpfe führen ihre Aktion aus
+els.list.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-action]');
-  if (!btn) return;
-  rowMenu.close();
-  runBookAction(btn.dataset.action, rowMenuId, btn.dataset.delta);
+  if (btn) { runBookAction(btn.dataset.action, btn.dataset.id); return; }
+  const target = e.target.closest('[data-open]');
+  if (target) runBookAction('open', target.dataset.open);
 });
-$('rowMenuCancel').addEventListener('click', () => rowMenu.close());
-rowMenu.addEventListener('click', (e) => { if (e.target === rowMenu) rowMenu.close(); });
 
-/* ---------- Filter ein-/ausklappen (Handy) ---------- */
+// Detailseite: alle Knöpfe über data-action
+$('viewDetail').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (btn && !btn.disabled) runBookAction(btn.dataset.action, $('viewDetail').dataset.id, btn.dataset.delta);
+});
+
+// Leiste unten: Bereiche
+$('pillbar').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-go]');
+  if (b) go(`#${b.dataset.go}`);
+});
+
+/* ---------- Suche und Filter (Lupe im Kopf) ---------- */
+function setToolbarOpen(open) {
+  $('toolbar').hidden = !open;
+  $('searchBtn').setAttribute('aria-expanded', String(open));
+}
+$('searchBtn').addEventListener('click', () => {
+  const open = $('toolbar').hidden;
+  // Zuklappen nur, wenn nichts gesucht oder gefiltert wird (sonst wären Bücher "verschwunden")
+  if (!open && (searchTerm || filterActiveCount())) { els.search.focus(); return; }
+  setToolbarOpen(open);
+  if (open) els.search.focus();
+});
+
+/* ---------- Filter ein-/ausklappen ---------- */
 $('filterToggle').addEventListener('click', () => {
   const toolbar = $('filterToggle').closest('.toolbar');
   const open = toolbar.classList.toggle('filters-open');
@@ -2162,3 +2349,4 @@ function showAppVersion() {
 
 // Los geht's
 render();
+showRoute();
