@@ -124,7 +124,9 @@ npm test        # oder: node --test
 
 | Datei | Inhalt |
 | --- | --- |
-| `index.html` | Design (CSS) und Gerüst (HTML) |
+| `index.html` | App-eigenes Design (CSS) und Gerüst (HTML) |
+| `css/tokens-porto.css`, `css/components.css` | Stil Porto aus dem Castra-Designsystem: Farben, Schriften, Formen und Bausteine (Briefmarke, Stempel, Abrisskarte …). Nicht von Hand ändern, bei einem Update ersetzen |
+| `js/porto.js` | Porto-Helfer: Poststempel, Motive für Marken ohne Cover, Symbole, Bewegung |
 | `js/app.js` | Oberfläche: Liste, Dialoge, Ereignisse |
 | `js/model.js` | Datenmodell Werk/Ausgabe/Eintrag, Migration, Laden |
 | `js/isbn.js` | ISBN prüfen und umrechnen |
@@ -138,5 +140,5 @@ npm test        # oder: node --test
 | `js/theme.js` | Design-Wahl System/Hell/Dunkel (Schalter oben rechts, gespeichert in diesem Browser) |
 | `sw.js` | Service Worker: Offline-Start, Versionsnummer, Updates |
 | `manifest.webmanifest` | Name, Farben und Icons für „Zum Home-Bildschirm“ |
-| `icons/` | App-Icons (Platzhalter) |
+| `icons/` | App-Icons (Briefmarke mit „B“ im Stil Porto) |
 | `cors-check.html` | Prüfseite: Welche Metadaten-Quellen funktionieren in diesem Browser? |

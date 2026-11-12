@@ -635,7 +635,13 @@ function chip(className, dataKey, key, label, count, pressed) {
 function renderFilters() {
   const books = allBooks();
 
-  els.views.innerHTML = '';
+  // Pillen-Umschalter (Porto): die Markierung <i> bleibt erhalten, damit sie zur neuen Ansicht gleitet
+  let marker = els.views.querySelector('i');
+  if (!marker) marker = el('i');
+  els.views.replaceChildren(marker);
+  const viewKeys = Object.keys(List.VIEWS);
+  els.views.style.setProperty('--n', viewKeys.length);
+  els.views.style.setProperty('--i', Math.max(0, viewKeys.indexOf(activeView)));
   for (const [key, view] of Object.entries(List.VIEWS)) {
     const tab = document.createElement('button');
     tab.type = 'button';
@@ -755,6 +761,62 @@ function progressElement(entry) {
   return box;
 }
 
+/* ---------- Cover als Briefmarke (Stil Porto) ---------- */
+
+// Zuletzt gezeichneter Status je Buch: wechselt ein Buch auf Gelesen/Abgebrochen,
+// schlägt der Poststempel beim nächsten Zeichnen einmal sichtbar auf.
+const lastStatus = new Map();
+
+/** Festes Motiv je Werk (aus der Id berechnet), damit es beim Neuzeichnen nicht wechselt. */
+function motifFor(id) {
+  let h = 0;
+  for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return Porto.motifs[h % Porto.motifs.length];
+}
+
+/**
+ * Briefmarke mit Zähnung: Cover der Ausgabe (aus IndexedDB) oder ein Porto-Motiv.
+ * Gelesene und abgebrochene Bücher bekommen einen Poststempel mit dem Enddatum.
+ * Rein dekorativ (aria-hidden); Titel und Status stehen als Text daneben.
+ */
+function coverStamp(book) {
+  const { entry, work } = book;
+  const stamp = el('span', 'stamp lift cover-stamp');
+  stamp.setAttribute('aria-hidden', 'true');
+  // Motiv sofort zeigen, ein gespeichertes Cover ersetzt es, sobald es geladen ist
+  stamp.innerHTML = Porto.motif(motifFor(work.id));
+  const coverId = coverIdOf(entry);
+  if (coverId) {
+    Covers.url(coverId).then((u) => {
+      if (!u) return;
+      const img = el('img', 'stamp-img');
+      img.alt = '';
+      img.src = u;
+      stamp.querySelector('.stamp-img').replaceWith(img);
+    });
+  }
+  const done = book.status === 'read' || book.status === 'dropped';
+  if (done) {
+    const end = entry.progress.endDate;
+    const d = end ? new Date(end + 'T00:00:00') : null;
+    stamp.insertAdjacentHTML('beforeend', Porto.postmark({
+      top: book.status === 'read' ? 'GELESEN' : 'ABGEBROCHEN',
+      date: d ? d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '',
+      year: d ? String(d.getFullYear()) : '',
+      waves: false,
+    }));
+    const before = lastStatus.get(book.id);
+    if (before && before !== 'read' && before !== 'dropped') {
+      // gerade abgeschlossen: Stempel erst nach dem Einfügen setzen, damit er aufschlägt
+      requestAnimationFrame(() => requestAnimationFrame(() => stamp.classList.add('is-stamped')));
+    } else {
+      stamp.classList.add('is-stamped');
+    }
+  }
+  lastStatus.set(book.id, book.status);
+  return stamp;
+}
+
 /** Erzeugt die Karte für ein einzelnes Buch. */
 function bookCard(book, inQueue = false) {
   // Hinweis: Alle Texte werden per textContent gesetzt, nie per innerHTML.
@@ -769,18 +831,7 @@ function bookCard(book, inQueue = false) {
   const head = el('div', 'book-head');
   // Handy: Platz in der Warteschlange vorn in der Zeile
   if (inQueue) head.appendChild(el('span', 'row-pos', `${entry.queuePos}.`));
-  // Platzhalter mit Anfangsbuchstabe (nur auf dem Handy sichtbar), bis ein Cover geladen ist
-  const placeholder = el('span', 'cover-ph', (work.title || '?').trim().charAt(0).toUpperCase());
-  placeholder.setAttribute('aria-hidden', 'true');
-  head.appendChild(placeholder);
-  const coverId = coverIdOf(entry);
-  if (coverId) {
-    const img = el('img', 'cover-thumb');
-    img.alt = '';
-    img.hidden = true;
-    Covers.url(coverId).then((u) => { if (u) { img.src = u; img.hidden = false; placeholder.remove(); } });
-    head.appendChild(img);
-  }
+  head.appendChild(coverStamp(book));
   const text = el('div', 'book-head-text');
   text.appendChild(el('h3', 'book-title', work.title));
   if (work.subtitle) text.appendChild(el('p', 'book-sub', work.subtitle));
@@ -857,6 +908,19 @@ function bookCard(book, inQueue = false) {
     actions.append(added, editBtn, delBtn);
   }
   li.appendChild(actions);
+
+  // "Lese gerade" als Abrisskarte (Porto .ticket): Inhalt links, Abschnitt mit dem Stand rechts
+  if (book.status === 'reading') {
+    const pct = Progress.percentOf(entry.progress, totalPagesOf(entry));
+    const body = el('div', 'ticket-body');
+    const content = el('div', 'ticket-content');
+    content.append(...li.childNodes);
+    const stub = el('div', 'ticket-stub', pct != null ? `${Math.round(pct)} % gelesen` : 'Lese gerade');
+    stub.setAttribute('aria-hidden', 'true');
+    body.append(content, stub);
+    li.appendChild(body);
+    li.classList.add('ticket');
+  }
 
   return li;
 }
@@ -1620,7 +1684,16 @@ els.views.addEventListener('click', (e) => {
   activeView = tab.dataset.view;
   activeFilter = 'all';
   render();
+  staggerList();
 });
+
+/** Bücher heben sich nach einem Ansichtswechsel nacheinander an (Porto .m-stagger), danach ist Ruhe. */
+let staggerTimer = null;
+function staggerList() {
+  clearTimeout(staggerTimer);
+  Porto.replay(els.list, 'm-stagger');
+  staggerTimer = setTimeout(() => els.list.classList.remove('m-stagger'), 1200);
+}
 
 // Status-Chips (ein Listener für alle Chips)
 els.filters.addEventListener('click', (e) => {

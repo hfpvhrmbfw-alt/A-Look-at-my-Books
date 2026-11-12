@@ -26,8 +26,10 @@ test('alle App-Dateien gibt es wirklich', () => {
 test('alles, was index.html und das Manifest laden, liegt im Offline-Cache', () => {
   const needed = [...localRefs(html), ...manifest.icons.map((i) => i.src)];
   for (const f of needed) assert.ok(Sw.APP_FILES.includes(f), `${f} fehlt in APP_FILES (sw.js)`);
-  for (const f of fs.readdirSync(path.join(root, 'js'))) {
-    assert.ok(Sw.APP_FILES.includes(`js/${f}`), `js/${f} fehlt in APP_FILES (sw.js)`);
+  for (const dir of ['js', 'css']) {
+    for (const f of fs.readdirSync(path.join(root, dir))) {
+      assert.ok(Sw.APP_FILES.includes(`${dir}/${f}`), `${dir}/${f} fehlt in APP_FILES (sw.js)`);
+    }
   }
 });
 

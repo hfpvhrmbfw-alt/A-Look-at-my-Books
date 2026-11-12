@@ -13,12 +13,12 @@
   -->
   <style>
     :root {
-      --bg: #EDE8DF; --surface: #F8F5EF; --line: #D3CBBE; --ink: #1A1714; --muted: #5A534A;
-      --accent: #A3201B; --ok: #2B6B3A; --ok-tint: #DCE8DA; --err: #A3182B; --err-tint: #F2D3D3;
+      --bg: #EFE5D5; --surface: #F9F3E8; --line: #D8CAB2; --ink: #1C1A16; --muted: #655C4E;
+      --accent: #E8451C; --ok: #2B6B3A; --ok-tint: #DCE8DA; --err: #A3182B; --err-tint: #F2D3D3;
     }
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #1A1816; --surface: #23201D; --line: #403A34; --ink: #ECE5DA; --muted: #B3A999;
+        --bg: #2A2723; --surface: #35312B; --line: #4D473E; --ink: #F3EBDD; --muted: #BDB2A0; --accent: #F0562E;
         --ok: #8CC79A; --ok-tint: #1F3324; --err: #F2A0A8; --err-tint: #3D1C20;
       }
     }
@@ -27,9 +27,9 @@
       font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
     }
     main { max-width: 640px; margin: 0 auto; }
-    h1 { font-family: Georgia, serif; font-size: 1.6rem; margin: 0 0 8px; border-bottom: 3px solid var(--accent); padding-bottom: 8px; }
+    h1 { font-family: Georgia, serif; font-size: 1.6rem; margin: 0 0 8px; border-bottom: 2px solid var(--accent); padding-bottom: 8px; }
     p { color: var(--muted); }
-    table { width: 100%; border-collapse: collapse; background: var(--surface); }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 18px; overflow: hidden; }
     td { padding: 10px 12px; border-top: 1px solid var(--line); vertical-align: top; }
     td small { display: block; color: var(--muted); word-break: break-all; }
     .ok { color: var(--ok); background: var(--ok-tint); font-weight: 600; white-space: nowrap; }
