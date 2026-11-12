@@ -19,7 +19,7 @@
   const MODES = ['system', 'light', 'dark'];
   const LABELS = { system: 'System', light: 'Hell', dark: 'Dunkel' };
   /* Farbe der Browserleiste (theme-color), passend zu --bg */
-  const BAR_COLORS = { light: '#EDE8DF', dark: '#1A1816' };
+  const BAR_COLORS = { light: '#EFE5D5', dark: '#2A2723' };
 
   /** Unbekannte oder fehlende Werte gelten als "system". */
   function normalize(mode) {

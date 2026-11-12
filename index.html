@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#EDE8DF" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#1A1816" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#EFE5D5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#2A2723" media="(prefers-color-scheme: dark)">
   <title>Meine Bücher</title>
   <!-- Als App installierbar (PWA): Manifest, Icons und iOS-Angaben. Alle Pfade relativ,
        damit es unter https://NAME.github.io/REPONAME/ genauso läuft wie lokal. -->
@@ -16,10 +16,12 @@
   <meta name="apple-mobile-web-app-title" content="Bücher">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23E8451C'/><text x='50' y='76' font-family='Georgia,serif' font-weight='700' font-size='72' text-anchor='middle' fill='%23111111'>B</text></svg>">
-  <!-- Schriften des Stils Kreide; ohne Internet greifen die Ersatzschriften (Georgia, Systemschrift) -->
+  <!-- Stil Porto: Tokens (Farben, Schriften, Formen) und Bausteine. Die Schriften (Source Serif 4,
+       IBM Plex Sans, IBM Plex Mono) lädt tokens-porto.css von Google Fonts; ohne Internet greifen Georgia und die Systemschrift. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Literata:opsz,wght@7..72,400;7..72,600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens-porto.css">
+  <link rel="stylesheet" href="css/components.css">
   <!-- Gewähltes Design (System/Hell/Dunkel) vor dem ersten Zeichnen setzen, damit nichts aufblitzt -->
   <script src="js/theme.js"></script>
   <script>Theme.apply(document, Theme.load(window.localStorage));</script>
@@ -31,67 +33,32 @@
     - Daten werden im Browser per localStorage gespeichert (nur auf diesem Gerät/Browser).
     - Datenmodell: Werk, Ausgabe, Leseeintrag (js/model.js); ISBN-Logik in js/isbn.js.
       Die reinen Logik-Dateien sind mit "npm test" (node --test) getestet.
-    Aufbau: 1. CSS (Design) und 2. HTML (Gerüst) in dieser Datei, 3. Logik in js/app.js
+    Aufbau: 1. CSS (Design, auf Basis von css/tokens-porto.css und css/components.css) und 2. HTML (Gerüst) in dieser Datei, 3. Logik in js/app.js
   -->
 
   <style>
     /* ------------------------------------------------------------------
-       1. DESIGN (Stil Kreide aus dem Castra-Designsystem, auf Basis Hausstil Web)
-       Farben als Variablen, damit man das Farbschema an einer Stelle ändern kann.
-       Papierheller Grund, eine einzige Akzentfarbe (Siegelrot),
-       eckige Formen ohne Schatten. Hell- und Dunkelmodus folgen dem System,
-       außer im Kopf ist "Hell" oder "Dunkel" gewählt (data-theme auf <html>, siehe js/theme.js).
-       Schriften: Playfair Display (Titel), Literata (Text), Courier Prime (Beschriftungen).
+       1. DESIGN: Stil Porto aus dem Castra-Designsystem
+       Farben, Schriften, Radien und Schatten kommen aus css/tokens-porto.css,
+       die Grundbausteine (Briefmarke, Stempel, Abrisskarte, Pillen-Umschalter …)
+       aus css/components.css. Beide Dateien bitte nicht von Hand ändern, sondern
+       bei einem Porto-Update einfach ersetzen. Hier steht nur, was die App zusätzlich braucht.
+       Warmes Papier, Orange als einzige Akzentfarbe für die Bedienung,
+       weiche Karten mit Schatten, Knöpfe als Pillen.
+       Tanne, Himmel, Senf und Rosé erscheinen nur in den Motiven der Briefmarken.
+       Hell- und Dunkelmodus folgen dem System, außer im Kopf ist "Hell" oder "Dunkel"
+       gewählt (data-theme auf <html>, siehe js/theme.js).
        ------------------------------------------------------------------ */
     :root {
-      --bg: #EDE8DF;          /* Papier */
-      --surface: #F8F5EF;     /* Karten, Felder */
-      --sunken: #E2DCD1;      /* Hover, Platzhalter */
-      --line: #D3CBBE;        /* Haarlinien */
-      --ink: #1A1714;         /* Text, kräftige Linien */
-      --muted: #5A534A;       /* Nebentext */
-      --faint: #9A9187;       /* nur Dekoration, nie Lesetext */
-      --accent: #A3201B;      /* Siegelrot: Flächen, Balken, Linien */
-      --accent-text: #8E1C17; /* Rot als kleine Schrift */
-      --accent-hover: #881A16;
-      --accent-tint: #F1D6D1;
-      --accent-ink: #FFFFFF; --label-no:#F1D6D1;  /* Text auf roter Fläche */
-
-      /* Statusfarben nur für Hinweise, nie als Dekoration */
-      --ok: #2B6B3A; --ok-tint: #DCE8DA;
-      --warn: #7A5200; --warn-tint: #F1E3C4;
-      --err: #A3182B; --err-tint: #F2D3D3;
-
-      --serif:"Playfair Display",Georgia,serif;
-      --sans:"Literata",Georgia,serif;
-      --mono:"Courier Prime",ui-monospace,monospace;
-      --r: 2px;               /* nur Knöpfe; sonst eckig */
-      --maxw: 960px;
-      color-scheme: light;
-    }
-    [data-theme="dark"] {
-      --bg: #1A1816; --surface: #23201D; --sunken: #2D2925; --line: #403A34;
-      --ink: #ECE5DA; --muted: #B3A999; --faint: #7A7166;
-      --accent: #B8382F; --accent-text: #EE9A90; --accent-hover: #C9463C; --accent-tint: #44201C; --accent-ink: #FFFFFF; --label-no:#F1D6D1;
-      --ok: #7FC48F; --ok-tint: #233226; --warn: #E0B25A; --warn-tint: #352B17; --err: #F08A8F; --err-tint: #3A2123;
-      color-scheme: dark;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root:not([data-theme="light"]) {
-        /* dieselben Werte wie [data-theme="dark"] */
-        --bg: #1A1816; --surface: #23201D; --sunken: #2D2925; --line: #403A34;
-        --ink: #ECE5DA; --muted: #B3A999; --faint: #7A7166;
-        --accent: #B8382F; --accent-text: #EE9A90; --accent-hover: #C9463C; --accent-tint: #44201C; --accent-ink: #FFFFFF; --label-no:#F1D6D1;
-        --ok: #7FC48F; --ok-tint: #233226; --warn: #E0B25A; --warn-tint: #352B17; --err: #F08A8F; --err-tint: #3A2123;
-        color-scheme: dark;
-      }
+      --maxw: 960px;          /* breiter als die Porto-Vorgabe, für zwei Spalten auf dem Desktop */
+      --r-thumb: 10px;        /* kleine Bilder und Platzhalter */
     }
 
-    * { box-sizing: border-box; }
     /* "hidden" soll immer ausblenden, auch bei Elementen mit display:flex (Knöpfe, Felder) */
     [hidden] { display: none !important; }
 
-    html { background: var(--bg); }
+    /* Stempel dürfen über den Markenrand ragen, ohne die Seite seitlich scrollbar zu machen */
+    html { background: var(--bg); overflow-x: clip; }
     html, body { margin: 0; }
 
     body {
@@ -106,8 +73,8 @@
       padding-bottom: calc(96px + env(safe-area-inset-bottom));
     }
 
-    h1, h2, h3, .book-title { font-family: var(--serif); font-weight: 700; }
-    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    h1, h2, h3, .book-title { font-family: var(--serif); font-weight: var(--title-weight); }
+    :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 
     /* Kleine Beschriftungen in Versalien (Mono) */
     .cap, .count, .badge, .chip, .tab, .control > span, .checks-label, .added, .source-note, .status-tag {
@@ -116,17 +83,17 @@
       text-transform: uppercase;
     }
 
-    /* Kopfzeile: schmale Leiste mit orangener Linie, darunter der Titel */
+    /* Kopfzeile: schmale Leiste mit feiner Linie, darunter der Titel */
     header.app-header {
       background: var(--bg);
-      border-bottom: 2px solid var(--accent);
+      border-bottom: 1px solid var(--head-rule);
       padding-top: env(safe-area-inset-top);
     }
     .header-inner {
       max-width: var(--maxw);
       margin: 0 auto;
       padding: 0 16px;
-      min-height: 48px;
+      min-height: 52px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -135,18 +102,18 @@
     .app-name { font-size: 12px; letter-spacing: .12em; white-space: nowrap; }
     header .count { color: var(--muted); font-size: 12px; letter-spacing: .12em; }
 
-    .hero { max-width: var(--maxw); margin: 0 auto; padding: 32px 16px 0; }
+    .hero { max-width: var(--maxw); margin: 0 auto; padding: 40px 16px 0; }
     .hero h1 {
       margin: 0;
       font-size: clamp(36px, 7vw, 64px);
       line-height: 1;
       letter-spacing: -.02em;
-      border-left: 10px solid var(--accent);
-      padding-left: 18px;
+      border-left: 0;
+      padding-left: 0;
     }
-    .hero .subtitle { margin: 12px 0 0 28px; font-size: 12px; letter-spacing: .12em; color: var(--ink); }
+    .hero .subtitle { margin: 12px 0 0; font-size: 12px; letter-spacing: .12em; color: var(--muted); }
     .hero .subtitle .sep { color: var(--faint); padding: 0 .6em; }
-    .rule-heavy { border: 0; border-top: 4px solid var(--ink); margin: 24px 0 0; }
+    .rule-heavy { border: 0; border-top: 1px solid var(--line); margin: 28px 0 0; }
 
     main { max-width: var(--maxw); margin: 0 auto; padding: 16px; }
 
@@ -157,7 +124,7 @@
       z-index: 5;
       background: var(--bg);
       padding: 16px 0 12px;
-      margin: -16px 0 16px;
+      margin: -16px 0 20px;
       border-bottom: 1px solid var(--line);
     }
 
@@ -165,33 +132,48 @@
     @media (max-width: 599px) {
       .toolbar { position: static; }
       .hero { padding-top: 24px; }
-      .hero h1 { border-left-width: 6px; padding-left: 12px; }
-      .hero .subtitle { margin-left: 18px; }
       /* Mono-Schrift ist breiter: Knöpfe etwas schmaler, damit drei in eine Zeile passen */
-      .book-actions .btn { font-size: 12px; padding: 8px 10px; }
-      .book { padding-left: 14px; padding-right: 14px; }
+      .book-actions .btn { font-size: 12px; padding: 8px 12px; }
+      .book { padding-left: 16px; padding-right: 16px; }
       /* "Hinzugefügt am" in eigene Zeile, damit die Knöpfe nebeneinander bleiben */
       .added { flex-basis: 100%; }
     }
 
-    .search, .field input, .field select, .field textarea, .control select {
+    /* Eingabefelder wie in components.css: helle Fläche, feiner Rahmen, kräftige Unterkante */
+    .field input, .field select, .field textarea, .control select {
       font: inherit;
+      font-size: 16px;
       color: var(--ink);
       background: var(--surface);
       border: 1px solid var(--line);
       border-bottom: 2px solid var(--ink);
-      border-radius: 0;
+      border-radius: var(--r-control-s) var(--r-control-s) 0 0;
       padding: 10px 12px;
       width: 100%;
+      min-height: 44px;
     }
-    .search { margin-top: 12px; }
-    .search:focus, .field input:focus, .field select:focus, .field textarea:focus, .control select:focus {
+    .field input:focus, .field select:focus, .field textarea:focus, .control select:focus {
       outline: none;
-      border-bottom-color: var(--accent);
+      border-bottom-color: var(--accent-text);
     }
+    /* Suche als Pille auf versenkter Fläche (Porto-Suche) */
+    input.search {
+      display: block;
+      font: 16px var(--sans);
+      color: var(--ink);
+      background: var(--sunken);
+      border: 0;
+      border-radius: var(--r-control);
+      padding: 0 20px;
+      min-height: 48px;
+      width: 100%;
+      margin: 14px 0 0;
+    }
+    input.search::placeholder { color: var(--muted); }
+    input.search:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--accent-text); }
     input[type="checkbox"] { accent-color: var(--accent); }
 
-    /* Filter-Chips: auf dem Handy waagerecht wischbar */
+    /* Filter-Chips: Pillen, auf dem Handy waagerecht wischbar */
     .filters {
       display: flex;
       gap: 6px;
@@ -203,10 +185,10 @@
     .chip {
       flex: 0 0 auto;
       border: 1px solid var(--line);
-      background: transparent;
+      background: var(--surface);
       color: var(--ink);
-      border-radius: 0;
-      padding: 8px 12px;
+      border-radius: var(--r-control);
+      padding: 8px 14px;
       font-size: 12px;
       font-weight: 500;
       cursor: pointer;
@@ -217,23 +199,23 @@
     .chip .n { color: inherit; opacity: .7; margin-left: 6px; }
 
     /* Bücherliste; Gruppen werden per CSS-Zähler durchnummeriert (№ 01, № 02 …) */
-    .book-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; counter-reset: grp; }
+    .book-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px; counter-reset: grp; }
     @media (min-width: 700px) {
       .book-list { grid-template-columns: 1fr 1fr; }
     }
 
+    /* Buchkarte: weiche Karte mit Schatten */
     .book {
       background: var(--surface);
       border: 1px solid var(--line);
-      border-top: 4px solid var(--ink);
-      padding: 16px 16px 12px;
+      border-radius: var(--r-card);
+      box-shadow: var(--shadow);
+      padding: 18px 18px 14px;
       display: flex;
       flex-direction: column;
       gap: 8px;
       min-width: 0;
     }
-    .book[data-status="reading"] { border-top-color: var(--accent); }
-    @media (hover: hover) { .book:hover { border-top-color: var(--accent); } }
 
     .book-title { font-size: 1.3rem; margin: 0; line-height: 1.2; overflow-wrap: anywhere; }
     .book-author { color: var(--muted); margin: 0; overflow-wrap: anywhere; }
@@ -243,12 +225,13 @@
       font-weight: 500;
       line-height: 1;
       border: 1px solid var(--ink);
-      padding: 4px 6px;
+      border-radius: var(--r-control-s);
+      padding: 4px 7px;
       white-space: nowrap;
     }
     .book[data-status="reading"] .badge:first-child { border-color: var(--accent-text); color: var(--accent-text); }
     .badge-format { border-color: var(--line); color: var(--muted); white-space: normal; }
-    .badge-score { background: var(--ink); color: var(--bg); }
+    .badge-score { background: var(--ink); border-color: var(--ink); color: var(--bg); }
     .stars-display { color: var(--accent); letter-spacing: 1px; }
     .stars-display .off { color: var(--line); }
     .book-notes {
@@ -261,49 +244,54 @@
       padding-top: 8px;
     }
     .book-actions {
-      display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 10px;
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 12px;
       justify-content: flex-end; border-top: 1px solid var(--line);
     }
     .added { color: var(--muted); font-size: 11px; margin-right: auto; align-self: center; }
 
-    /* Knöpfe */
+    /* Knöpfe: Pillen mit feinem Rand */
     .btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      gap: 6px;
       font: 600 13px/1 var(--mono);
       letter-spacing: .04em;
-      border-radius: var(--r);
-      border: 2px solid var(--ink);
+      border-radius: var(--r-control);
+      border: var(--btn-border) solid var(--ink);
       background: transparent;
       color: var(--ink);
-      padding: 8px 14px;
+      padding: 8px 16px;
       min-height: 40px;
       cursor: pointer;
       text-decoration: none;
     }
     @media (hover: hover) { .btn:hover { background: var(--ink); color: var(--bg); } }
-    .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+    .btn-primary { background: var(--accent); border-color: var(--accent-edge); color: var(--accent-ink); }
     @media (hover: hover) { .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-ink); } }
     .btn-danger { color: var(--err); border-color: var(--err); }
     @media (hover: hover) { .btn-danger:hover { background: var(--err); border-color: var(--err); color: var(--bg); } }
 
-    /* Quadratischer "+"-Knopf unten rechts (gut mit dem Daumen erreichbar) */
+    /* Runder "+"-Knopf unten rechts (gut mit dem Daumen erreichbar) */
     .fab {
       position: fixed;
       right: calc(20px + env(safe-area-inset-right));
       bottom: calc(20px + env(safe-area-inset-bottom));
       width: 60px;
       height: 60px;
-      border-radius: var(--r);
-      border: 2px solid var(--accent);
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      border: 0;
       background: var(--accent);
       color: var(--accent-ink);
-      font: 600 2rem/1 var(--mono);
+      box-shadow: var(--shadow);
       cursor: pointer;
       z-index: 10;
+      transition: transform var(--dur-spring) var(--ease-spring);
     }
-    @media (hover: hover) { .fab:hover { background: var(--accent-hover); border-color: var(--accent-hover); } }
+    .fab .icon { width: 28px; height: 28px; stroke-width: 2.2; }
+    @media (hover: hover) { .fab:hover { background: var(--accent-hover); transform: rotate(90deg); } }
 
     /* Leerer Zustand */
     .empty { text-align: center; color: var(--muted); padding: 48px 16px; border-top: 1px solid var(--line); }
@@ -313,8 +301,8 @@
     /* Formular-Dialog: auf dem Handy als Blatt von unten, auf dem Desktop mittig */
     dialog {
       border: 1px solid var(--line);
-      border-top: 4px solid var(--ink);
-      border-radius: 0;
+      border-radius: var(--r-card);
+      box-shadow: var(--shadow);
       padding: 0;
       background: var(--bg);
       color: var(--ink);
@@ -326,22 +314,23 @@
       overflow-y: auto;
       overscroll-behavior: contain;   /* Wischen im Dialog schiebt nicht die Seite dahinter */
     }
-    dialog::backdrop { background: rgba(17, 17, 17, 0.55); }
+    dialog::backdrop { background: rgb(28 26 22 / .45); }
     @media (max-width: 599px) {
       dialog {
         margin: auto 0 0;          /* unten andocken */
         max-width: 100%;
+        border-radius: var(--r-card) var(--r-card) 0 0;
+        border-bottom: 0;
         /* bei offener Tastatur über ihr andocken statt dahinter (--kb aus js/mobile.js) */
         margin-bottom: var(--kb, 0px);
       }
+      /* Griff oben wie bei Porto-Blättern */
+      dialog::before { content: ""; display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--line); margin: 10px auto 0; }
     }
     .dialog-form {
-      padding: 20px max(16px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      padding: 20px max(18px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
     }
-    .dialog-form h2 {
-      margin: 0 0 16px; font-size: 1.7rem; line-height: 1.1;
-      border-left: 6px solid var(--accent); padding-left: 12px;
-    }
+    .dialog-form h2 { margin: 0 0 16px; font-size: 1.7rem; line-height: 1.1; }
 
     .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
     .field label, .field legend {
@@ -369,9 +358,9 @@
     .star-input .hint { font-size: 0.85rem; color: var(--muted); margin-left: 8px; }
 
     /* Ansicht-Umschalter (Leseliste / Archiv / Alle) */
-    .tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--ink); }
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
     .tab {
-      flex: 1; border: 0; border-bottom: 4px solid transparent; margin-bottom: -2px;
+      flex: 1; border: 0; border-bottom: var(--tab-bar) solid transparent; margin-bottom: -1px;
       background: none; color: var(--muted); cursor: pointer; min-height: 44px;
       font-size: 12px; font-weight: 600; padding: 12px 4px 10px; white-space: nowrap;
     }
@@ -383,13 +372,14 @@
     .field-row > .field { min-width: 0; }
     .field-hint { font-size: 0.85rem; color: var(--muted); margin: 0; min-height: 1em; }
     .field-hint.bad { color: var(--err); }
-    details.section { border-bottom: 1px solid var(--line); margin: 0; }
+    /* details.section: components.css gibt .section/details eigene Abstände, hier zurücksetzen */
+    details.section { border-top: 0; border-bottom: 1px solid var(--line); margin: 0; padding: 0; }
     details.section:first-of-type, .field + details.section { border-top: 1px solid var(--line); }
     details.section:last-of-type, details.section:has(+ .field), details.section + .field { margin-bottom: 16px; }
     details.section + .field { margin-top: 16px; }
     details.section > summary {
       list-style: none; cursor: pointer; min-height: 48px;
-      display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 12px 28px 12px 4px; position: relative;
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px 10px; padding: 12px 28px 12px 4px; position: relative;
       font: 600 13px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase;
     }
     details.section > summary::-webkit-details-marker { display: none; }
@@ -399,7 +389,7 @@
     }
     details.section[open] > summary::after { content: "−"; }
     @media (hover: hover) { details.section > summary:hover { background: var(--sunken); } }
-    .section-body { padding: 4px 4px 8px; }
+    details.section > .section-body { padding: 4px 4px 8px; color: inherit; }
     .checks-label { font-size: 12px; color: var(--muted); }
     .checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
     .checks label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 0.95rem; min-height: 32px; }
@@ -410,7 +400,7 @@
     .tags { display: flex; flex-wrap: wrap; gap: 4px; }
     .tag {
       font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
-      border: 1px solid var(--line); padding: 4px 6px; color: var(--muted);
+      border: 1px solid var(--line); border-radius: var(--r-control); padding: 4px 8px; color: var(--muted);
     }
 
     /* Kopfzeile rechts: Zähler, Design-Schalter, Einstellungen */
@@ -439,18 +429,18 @@
     .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-top: 10px; }
     .control { display: flex; flex-direction: column; color: var(--muted); gap: 4px; min-width: 0; }
     .control > span { font-size: 11px; font-weight: 600; }
-    .control select { font-size: 16px; padding: 8px; min-height: 44px; } /* unter 16px zoomt das iPhone beim Antippen */
+    .control select { padding: 8px; } /* 16px Schrift, sonst zoomt das iPhone beim Antippen */
 
-    /* Gruppen-Überschriften in der Leseliste (Lese gerade / Als Nächstes / Backlog)
-       als orangene Label-Box mit fortlaufender Nummer */
-    .group-head { grid-column: 1 / -1; list-style: none; margin: 16px 0 -4px; counter-increment: grp; }
+    /* Gruppen-Überschriften (Lese gerade / Als Nächstes / Backlog) im Porto-Label-Stil:
+       Mono-Versalien in Tinte, die laufende Nummer in Orange */
+    .group-head { grid-column: 1 / -1; list-style: none; margin: 20px 0 -6px; counter-increment: grp; }
     .group-head:first-child { margin-top: 0; }
     .group-head h2 {
       display: inline-block; margin: 0;
-      background: var(--accent); color: var(--accent-ink);
-      font: 600 16px/1.2 var(--mono); letter-spacing: .04em; padding: 9px 14px;
+      color: var(--label-fg);
+      font: var(--label-weight) var(--label-size)/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase;
     }
-    .group-head h2::before { content: "№ " counter(grp, decimal-leading-zero) " — "; color: var(--label-no); }
+    .group-head h2::before { content: "№ " counter(grp, decimal-leading-zero) " · "; color: var(--label-no-fg); }
     .queue-btns { display: flex; align-items: center; gap: 4px; margin-right: auto; }
     .queue-btns .btn { min-width: 44px; padding: 8px; }
     .queue-pos { font: 700 1.3rem/1 var(--serif); color: var(--ink); margin-right: 4px; }
@@ -458,18 +448,18 @@
     /* Fortschrittsbalken und Verlauf */
     .push-left { margin-right: auto; }
     .progress { display: flex; flex-direction: column; gap: 4px; }
-    .progress-bar { height: 8px; background: var(--sunken); overflow: hidden; }
-    .progress-bar > span { display: block; height: 100%; background: var(--accent); }
+    .progress-bar { height: 8px; background: var(--sunken); border-radius: var(--r-control-s); overflow: hidden; }
+    .progress-bar > span { display: block; height: 100%; background: var(--accent); border-radius: var(--r-control-s); }
     .progress-text { font-size: 0.85rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 12px; }
     .progress-log { list-style: none; padding: 0; margin: 0 0 8px; font-size: 0.85rem; color: var(--muted); max-height: 140px; overflow-y: auto; }
     .progress-log li { padding: 4px 0; border-bottom: 1px solid var(--line); }
 
     /* Cover */
-    .book-head { display: flex; gap: 12px; align-items: flex-start; }
+    .book-head { display: flex; gap: 14px; align-items: flex-start; }
     .book-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-    .cover-thumb { width: 56px; height: auto; max-height: 86px; object-fit: cover; border: 1px solid var(--line); background: var(--sunken); flex: 0 0 auto; }
+    .cover-thumb { width: 56px; height: auto; max-height: 86px; object-fit: cover; border-radius: var(--r-thumb); background: var(--sunken); flex: 0 0 auto; }
     .cover-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
-    .cover-preview { width: 72px; border: 1px solid var(--line); }
+    .cover-preview { width: 72px; border-radius: var(--r-thumb); box-shadow: var(--shadow); }
     .cover-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .cover-actions .checks-label { flex-basis: 100%; }
     .cover-actions .field-hint { flex-basis: 100%; }
@@ -482,23 +472,24 @@
     .enrich-errors { margin: 0 0 8px; padding-left: 18px; color: var(--err); font-size: 0.85rem; }
     .enrich-note {
       border-left: 4px solid var(--accent); background: var(--accent-tint);
+      border-radius: 0 var(--r-card) var(--r-card) 0;
       padding: 12px 16px; font-size: 0.9rem; margin-bottom: 12px;
     }
-    .edition-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+    .edition-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
     .edition-option {
-      display: flex; gap: 10px; width: 100%; text-align: left; font: inherit; color: inherit;
-      background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--ink);
-      border-radius: 0; padding: 10px; cursor: pointer;
+      display: flex; gap: 12px; width: 100%; text-align: left; font: inherit; color: inherit;
+      background: var(--surface); border: 1px solid var(--line);
+      border-radius: calc(var(--r-card) * .75); padding: 12px; cursor: pointer;
     }
-    .edition-option:focus-visible { border-top-color: var(--accent); background: var(--sunken); }
-    @media (hover: hover) { .edition-option:hover { border-top-color: var(--accent); background: var(--sunken); } }
-    .edition-option img, .edition-option .no-cover { width: 48px; min-height: 64px; flex: 0 0 auto; object-fit: cover; background: var(--sunken); border: 1px solid var(--line); }
+    .edition-option:focus-visible { border-color: var(--accent); background: var(--sunken); }
+    @media (hover: hover) { .edition-option:hover { border-color: var(--accent); background: var(--sunken); } }
+    .edition-option img, .edition-option .no-cover { width: 48px; min-height: 64px; flex: 0 0 auto; object-fit: cover; background: var(--sunken); border-radius: var(--r-thumb); }
     .edition-option .eo-text { display: flex; flex-direction: column; gap: 2px; font-size: 0.9rem; min-width: 0; }
     .edition-option strong { font-family: var(--serif); font-size: 1.05rem; }
     .eo-match { color: var(--ok); font-size: 0.8rem; }
     .badge-uncertain {
       font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
-      border: 1px solid var(--accent-text); color: var(--accent-text); padding: 4px 6px; align-self: flex-start;
+      border: 1px solid var(--accent-text); color: var(--accent-text); border-radius: var(--r-control-s); padding: 4px 6px; align-self: flex-start;
     }
     .btn-link {
       background: none; border: none; color: var(--ink); cursor: pointer; padding: 4px 0; margin-bottom: 8px;
@@ -507,16 +498,16 @@
     }
     @media (hover: hover) { .btn-link:hover { color: var(--accent-text); } }
     .edition-summary { font-size: 0.9rem; margin-bottom: 8px; display: flex; gap: 10px; align-items: flex-start; }
-    .edition-summary img { width: 56px; border: 1px solid var(--line); }
+    .edition-summary img { width: 56px; border-radius: var(--r-thumb); }
     .field-table { display: grid; gap: 6px; }
-    .field-row-check { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; border: 1px solid var(--line); padding: 8px 10px; background: var(--surface); }
+    .field-row-check { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; border: 1px solid var(--line); border-radius: var(--r-thumb); padding: 8px 10px; background: var(--surface); }
     .field-row-check input { width: 20px; height: 20px; margin-top: 2px; }
     .frc-label { font-size: 0.8rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
     .frc-value { overflow-wrap: anywhere; font-size: 0.95rem; }
     .frc-value.long { max-height: 6.5em; overflow: hidden; }
     .frc-current { font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
     /* Feldstatus: immer mit Wort (neu/abweichend/identisch), Farbe nur zusätzlich */
-    .status-tag { font-size: 11px; font-weight: 600; line-height: 1; padding: 3px 6px; border-left: 3px solid currentColor; }
+    .status-tag { font-size: 11px; font-weight: 600; line-height: 1; padding: 3px 7px; border-radius: var(--r-control); }
     .status-neu { background: var(--ok-tint); color: var(--ok); }
     .status-abweichend { background: var(--warn-tint); color: var(--warn); }
     .status-identisch { background: var(--sunken); color: var(--muted); }
@@ -531,13 +522,13 @@
     .criteria, .weights { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
     .weights { margin-bottom: 12px; }
     .settings-head {
-      font: 700 1.25rem/1.2 var(--serif); margin: 24px 0 8px; padding-top: 8px; border-top: 2px solid var(--ink);
+      font: 700 1.25rem/1.2 var(--serif); margin: 24px 0 8px; padding-top: 12px; border-top: 1px solid var(--line);
     }
     .dialog-form h2 + .settings-head { margin-top: 0; }
 
     .dialog-actions {
       display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;
-      margin-top: 12px; padding-top: 12px; border-top: 2px solid var(--ink);
+      margin-top: 12px; padding-top: 14px; border-top: 1px solid var(--line);
     }
     .error { color: var(--err); font-size: 0.85rem; min-height: 1em; }
 
@@ -549,8 +540,9 @@
       transform: translateX(-50%);
       background: var(--ink);
       color: var(--bg);
-      border-left: 4px solid var(--accent);
-      padding: 10px 16px;
+      border-radius: var(--r-control);
+      box-shadow: var(--shadow);
+      padding: 8px 10px 8px 20px;
       display: flex;
       gap: 12px;
       align-items: center;
@@ -626,20 +618,6 @@
       position: absolute; width: 1px; height: 1px; overflow: hidden;
       clip: rect(0 0 0 0); white-space: nowrap;
     }
-  
-/* Stil Kreide v1.0 (Castra-Designsystem): Form und Linien */
-:root { --r:0px; }
-.card { border-radius:0px; border-top-width:3px; }
-.note { border-radius:0 0px 0px 0; }
-.label, .tag { border-radius:0px; }
-.field input, .field select, .field textarea { border-radius:0px 0px 0 0; }
-.rule-heavy, .part { border-top-width:3px; }
-.section, table.data th, .tabs [role="tablist"] { border-bottom-width:1px; }
-.hero h1, .label, .card h3, .kpi .v, blockquote p { font-weight:700; }
-.label { font-weight:700; }
-.label { font-variant:small-caps; }
-.group-head h2 { font-variant:small-caps; font-weight:700; }
-h1, h2, h3, .book-title { font-weight:700; }
 
     /* ------------------------------------------------------------------
        Desktop: Handy-Elemente ausblenden
@@ -648,7 +626,7 @@ h1, h2, h3, .book-title { font-weight:700; }
     .search-row { display: flex; gap: 8px; align-items: stretch; }
     .search-row .search { flex: 1; min-width: 0; }
     .filter-count {
-      margin-left: 8px; min-width: 20px; padding: 3px 5px; line-height: 1;
+      margin-left: 2px; min-width: 20px; padding: 3px 6px; line-height: 1; border-radius: var(--r-control);
       background: var(--accent); color: var(--accent-ink); font-size: 11px;
     }
     .sheet-actions { display: grid; gap: 8px; }
@@ -658,7 +636,6 @@ h1, h2, h3, .book-title { font-weight:700; }
        HANDY (unter 600 px): luftiger, nach dem Vorbild ruhiger Lese-Apps.
        Ein großer Titel, Segment-Schalter, Suche mit Filter-Knopf,
        "Lese gerade" als Weiterlesen-Karte, alle anderen Bücher als Zeilen.
-       Farben, Schriften und eckige Formen bleiben die des Stils Kreide.
        ------------------------------------------------------------------ */
     @media (max-width: 599px) {
       body { padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
@@ -673,18 +650,14 @@ h1, h2, h3, .book-title { font-weight:700; }
       .app-name, .icon-btn .btn-text { display: none; }
       .icon-btn {
         display: inline-flex; align-items: center; justify-content: center;
-        width: 44px; height: 44px; padding: 0; text-decoration: none;
+        width: 44px; height: 44px; padding: 0; text-decoration: none; border-radius: 50%;
       }
-      .icon-btn .icon {
-        display: block; width: 24px; height: 24px;
-        fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: square;
-      }
+      .icon-btn .icon { display: block; }
       .icon-btn .icon .icon-fill { fill: currentColor; stroke: none; }
-      .icon-btn .icon circle { fill: var(--bg); }
 
       .hero { padding-top: calc(24px + env(safe-area-inset-top)); padding-right: 112px; }
       .hero h1 {
-        font-size: 34px; line-height: 1.15; border-left: 0; padding-left: 0;
+        font-size: 34px; line-height: 1.15;
         white-space: nowrap;
       }
       .hero .subtitle, .rule-heavy { display: none; }
@@ -693,37 +666,33 @@ h1, h2, h3, .book-title { font-weight:700; }
       .toolbar { margin: -20px 0 8px; padding: 20px 0 8px; border-bottom: 0; }
 
       /* Ansichten als Segment-Schalter */
-      .tabs { background: var(--sunken); border: 0; padding: 3px; gap: 3px; }
+      .tabs { background: var(--sunken); border: 0; padding: 4px; gap: 2px; border-radius: var(--r-control); }
       .tab {
-        border: 1px solid transparent; margin: 0; padding: 8px 4px; min-height: 40px;
+        border: 0; margin: 0; padding: 8px 4px; min-height: 40px; border-radius: var(--r-control);
         font-size: 11px; letter-spacing: .06em; color: var(--muted);
       }
       .tab[aria-selected="true"] {
-        background: var(--surface); border-color: var(--line); color: var(--ink);
-        box-shadow: inset 0 -2px 0 var(--accent);
+        background: var(--surface); color: var(--ink);
+        box-shadow: 0 1px 2px var(--shadow-color);
       }
 
       /* Suche mit Filter-Knopf; Chips und Auswahlfelder erst nach Antippen */
       .search-row { margin-top: 14px; }
-      .search { margin-top: 0; }
-      .filter-toggle { display: inline-flex; min-height: 46px; padding: 8px 14px; border-width: 1px; border-color: var(--line); border-bottom: 2px solid var(--ink); background: var(--surface); }
+      input.search { margin-top: 0; }
+      .filter-toggle { display: inline-flex; min-height: 48px; padding: 8px 16px; border: 0; background: var(--sunken); }
       .filter-panel { display: none; padding-top: 6px; }
       .toolbar.filters-open .filter-panel { display: block; }
-      .toolbar.filters-open .filter-toggle { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+      .toolbar.filters-open .filter-toggle { background: var(--ink); color: var(--bg); }
 
-      /* Gruppen-Überschriften: kleine Versalien statt roter Box */
+      /* Gruppen-Überschriften: kleine Versalien */
       .book-list { gap: 0; }
       .group-head { margin: 24px 0 4px; }
       .group-head:first-child { margin-top: 8px; }
-      .group-head h2 {
-        background: none; color: var(--muted); padding: 0;
-        font: 700 12px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; font-variant: normal;
-      }
-      .group-head h2::before { content: "№ " counter(grp, decimal-leading-zero) " · "; color: var(--accent-text); }
+      .group-head h2 { color: var(--muted); font-size: 12px; letter-spacing: .1em; }
 
       /* Buch als Zeile: Cover, Titel, Autor:in, eine Zusatzzeile, rechts "…" */
       .book {
-        background: none; border: 0; border-bottom: 1px solid var(--line);
+        background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none;
         padding: 14px 0; gap: 6px; cursor: pointer;
       }
       .book-head { gap: 14px; align-items: flex-start; }
@@ -734,13 +703,13 @@ h1, h2, h3, .book-title { font-weight:700; }
       .cover-thumb, .cover-ph { width: 44px; height: 64px; max-height: none; flex: 0 0 auto; }
       .cover-ph {
         display: flex; align-items: center; justify-content: center;
-        background: var(--sunken); border: 1px solid var(--line);
+        background: var(--sunken); border-radius: var(--r-thumb);
         font: 700 20px/1 var(--serif); color: var(--muted);
       }
       .row-pos { display: block; flex: 0 0 auto; min-width: 22px; padding-top: 2px; font: 700 1.1rem/1.25 var(--serif); }
       .row-more {
         display: flex; align-items: center; justify-content: center; flex: 0 0 auto;
-        width: 44px; height: 44px; margin: -8px -10px 0 0;
+        width: 44px; height: 44px; margin: -8px -10px 0 0; border-radius: 50%;
         background: none; border: 0; color: var(--muted); cursor: pointer;
       }
       .row-more svg { width: 20px; height: 20px; fill: currentColor; }
@@ -749,11 +718,11 @@ h1, h2, h3, .book-title { font-weight:700; }
       /* In der Zeile reichen Score und Sterne; Status, Format, Tags, Notizen und Knöpfe stehen im Bearbeiten-Dialog bzw. im "…"-Menü */
       .book-meta .badge:not(.badge-score), .book > .tags, .book > .book-notes, .book > .book-actions { display: none; }
       .book-meta:not(:has(.badge-score, .stars-display)) { display: none; }
-      .badge-score { font-size: 10px; padding: 3px 5px; }
+      .badge-score { font-size: 10px; padding: 3px 6px; }
 
       /* "Lese gerade": Weiterlesen-Karte mit großem Fortschritt-Knopf */
       .book[data-status="reading"] {
-        background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--accent);
+        background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow);
         padding: 16px; margin-bottom: 8px;
         display: grid; grid-template-columns: 1fr auto; column-gap: 12px; align-items: end;
       }
@@ -766,13 +735,12 @@ h1, h2, h3, .book-title { font-weight:700; }
         display: flex; grid-column: 2; grid-row: span 1; margin: 0; padding: 0; border: 0; align-self: end;
       }
       .book[data-status="reading"] > .book-actions .btn:not(.btn-primary) { display: none; }
-      .book[data-status="reading"] > .book-actions .btn-primary { min-height: 48px; padding: 10px 16px; font-size: 13px; }
+      .book[data-status="reading"] > .book-actions .btn-primary { min-height: 48px; padding: 10px 18px; font-size: 13px; }
 
       .empty { border-top: 0; }
 
       /* Aktionsmenü als Blatt von unten */
-      .action-sheet .dialog-form h2 { font-size: 1.3rem; border-left-width: 4px; }
-      .action-sheet .dialog-actions { border-top-width: 1px; }
+      .action-sheet .dialog-form h2 { font-size: 1.3rem; }
       .action-sheet .dialog-actions .btn { flex: 1; min-height: 48px; }
     }
 </style>
@@ -845,7 +813,7 @@ h1, h2, h3, .book-title { font-weight:700; }
     <div class="empty" id="emptyState" hidden></div>
   </main>
 
-  <button class="fab" id="addBtn" type="button" aria-label="Buch hinzufügen" title="Buch hinzufügen">+</button>
+  <button class="fab" id="addBtn" type="button" aria-label="Buch hinzufügen" title="Buch hinzufügen"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
 
   <!-- Dialog zum Hinzufügen und Bearbeiten (dasselbe Formular für beides).
        Die einklappbaren Abschnitte (Werk, Ausgaben, Besonderheiten) werden per JavaScript
