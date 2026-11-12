@@ -457,7 +457,14 @@
     /* Cover */
     .book-head { display: flex; gap: 14px; align-items: flex-start; }
     .book-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-    .cover-thumb { width: 56px; height: auto; max-height: 86px; object-fit: cover; border-radius: var(--r-thumb); background: var(--sunken); flex: 0 0 auto; }
+    /* Cover als Briefmarke (.stamp aus components.css), mit Porto-Motiv, wenn kein Bild da ist.
+       Kleine Marken bekommen feinere Zähnung und weniger Rand. */
+    .cover-stamp {
+      flex: 0 0 auto; width: 72px; --stamp-pad: 5px; --d: 6px; --h: 1.9px;
+      --pm-size: 62px; --pm-right: -12px; --pm-top: 44px;
+    }
+    .cover-stamp .stamp-img { border-radius: 1px; }
+    .cover-stamp > svg.stamp-img { height: auto; }
     .cover-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
     .cover-preview { width: 72px; border-radius: var(--r-thumb); box-shadow: var(--shadow); }
     .cover-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -622,7 +629,7 @@
     /* ------------------------------------------------------------------
        Desktop: Handy-Elemente ausblenden
        ------------------------------------------------------------------ */
-    .icon-btn .icon, .filter-toggle, .row-more, .cover-ph, .row-pos { display: none; }
+    .icon-btn .icon, .filter-toggle, .row-more, .row-pos { display: none; }
     .search-row { display: flex; gap: 8px; align-items: stretch; }
     .search-row .search { flex: 1; min-width: 0; }
     .filter-count {
@@ -700,12 +707,7 @@
       .book-title { font-size: 1.1rem; line-height: 1.25; }
       .book-author { font-size: 0.95rem; }
       .book-sub { margin: 0; font-size: 0.85rem; }
-      .cover-thumb, .cover-ph { width: 44px; height: 64px; max-height: none; flex: 0 0 auto; }
-      .cover-ph {
-        display: flex; align-items: center; justify-content: center;
-        background: var(--sunken); border-radius: var(--r-thumb);
-        font: 700 20px/1 var(--serif); color: var(--muted);
-      }
+      .cover-stamp { width: 50px; --stamp-pad: 4px; --d: 5px; --h: 1.5px; --pm-size: 46px; --pm-right: -10px; --pm-top: 30px; }
       .row-pos { display: block; flex: 0 0 auto; min-width: 22px; padding-top: 2px; font: 700 1.1rem/1.25 var(--serif); }
       .row-more {
         display: flex; align-items: center; justify-content: center; flex: 0 0 auto;
@@ -727,7 +729,7 @@
         display: grid; grid-template-columns: 1fr auto; column-gap: 12px; align-items: end;
       }
       .book[data-status="reading"] > * { grid-column: 1 / -1; }
-      .book[data-status="reading"] .cover-thumb, .book[data-status="reading"] .cover-ph { width: 64px; height: 96px; }
+      .book[data-status="reading"] .cover-stamp { width: 72px; --stamp-pad: 5px; --d: 6px; --h: 1.9px; }
       .book[data-status="reading"] .book-title { font-size: 1.35rem; }
       .book[data-status="reading"] > .book-meta { display: none; }
       .book[data-status="reading"] > .progress { grid-column: 1; margin: 8px 0 0; }
@@ -1075,6 +1077,7 @@
   </div>
 
   <!-- Logik: reine Funktionen (testbar mit "npm test") und die App-Oberfläche -->
+  <script src="js/porto.js"></script>
   <script src="js/isbn.js"></script>
   <script src="js/model.js"></script>
   <script src="js/list.js"></script>
