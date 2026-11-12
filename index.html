@@ -357,15 +357,22 @@
     .star-input button.on { color: var(--accent); }
     .star-input .hint { font-size: 0.85rem; color: var(--muted); margin-left: 8px; }
 
-    /* Ansicht-Umschalter (Leseliste / Archiv / Alle) */
-    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
-    .tab {
-      flex: 1; border: 0; border-bottom: var(--tab-bar) solid transparent; margin-bottom: -1px;
-      background: none; color: var(--muted); cursor: pointer; min-height: 44px;
-      font-size: 12px; font-weight: 600; padding: 12px 4px 10px; white-space: nowrap;
-    }
-    @media (hover: hover) { .tab:hover { color: var(--ink); } }
-    .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+    /* Ansicht-Umschalter (Leseliste / Archiv / Alle): Porto-Pillen mit gleitender Markierung.
+       Die Reiter sind role="tab" mit aria-selected statt aria-pressed. */
+    .views { max-width: 520px; }
+    .views .tab { min-height: 40px; padding: 0 6px; white-space: nowrap; letter-spacing: .02em; text-transform: none; font-family: var(--sans); }
+    .views .tab[aria-selected="true"] { color: var(--ink); }
+    @media (hover: hover) { .views .tab:hover { color: var(--ink); } }
+
+    /* "Lese gerade" als Abrisskarte (.ticket aus components.css). Der Inhalt steckt in
+       .ticket-content (eigene Klasse, weil .ticket-main alle span/b darin umformatiert). */
+    .book.ticket { background: none; border: 0; border-radius: 0; box-shadow: none; padding: 0; display: block; }
+    .book.ticket .ticket-body { --stub: 54px; height: 100%; }
+    .ticket-content { padding: 20px 8px 16px 22px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+    .ticket .ticket-stub { font-size: 11px; }
+    .ticket .book-actions { border-top-color: color-mix(in srgb, var(--accent-text) 25%, transparent); }
+    .ticket .progress-bar { background: color-mix(in srgb, var(--surface) 70%, transparent); }
+    .ticket .badge-format { border-color: color-mix(in srgb, var(--accent-text) 30%, transparent); }
 
     /* Formular: zwei Felder nebeneinander, einklappbare Abschnitte */
     .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
@@ -621,6 +628,9 @@
       .tab:active, .icon-btn:active, .btn-link:active { color: var(--accent-text); }
     }
 
+    /* Federndes Anheben der Marken nur mit Maus, nicht beim Antippen */
+    @media (hover: none) { .stamp.lift:hover { transform: none; } }
+
     .visually-hidden {
       position: absolute; width: 1px; height: 1px; overflow: hidden;
       clip: rect(0 0 0 0); white-space: nowrap;
@@ -672,16 +682,7 @@
       main { padding-top: 20px; }
       .toolbar { margin: -20px 0 8px; padding: 20px 0 8px; border-bottom: 0; }
 
-      /* Ansichten als Segment-Schalter */
-      .tabs { background: var(--sunken); border: 0; padding: 4px; gap: 2px; border-radius: var(--r-control); }
-      .tab {
-        border: 0; margin: 0; padding: 8px 4px; min-height: 40px; border-radius: var(--r-control);
-        font-size: 11px; letter-spacing: .06em; color: var(--muted);
-      }
-      .tab[aria-selected="true"] {
-        background: var(--surface); color: var(--ink);
-        box-shadow: 0 1px 2px var(--shadow-color);
-      }
+      .views { max-width: none; }
 
       /* Suche mit Filter-Knopf; Chips und Auswahlfelder erst nach Antippen */
       .search-row { margin-top: 14px; }
@@ -718,26 +719,28 @@
 
       .book-head-text > .book-meta, .book-head-text > .progress, .book-head-text > .progress-text { margin-top: 6px; }
       /* In der Zeile reichen Score und Sterne; Status, Format, Tags, Notizen und Knöpfe stehen im Bearbeiten-Dialog bzw. im "…"-Menü */
-      .book-meta .badge:not(.badge-score), .book > .tags, .book > .book-notes, .book > .book-actions { display: none; }
+      .book-meta .badge:not(.badge-score), .book > .tags, .book > .book-notes, .book > .book-actions,
+      .ticket-content > .tags, .ticket-content > .book-notes { display: none; }
       .book-meta:not(:has(.badge-score, .stars-display)) { display: none; }
       .badge-score { font-size: 10px; padding: 3px 6px; }
 
-      /* "Lese gerade": Weiterlesen-Karte mit großem Fortschritt-Knopf */
-      .book[data-status="reading"] {
-        background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow);
-        padding: 16px; margin-bottom: 8px;
+      /* "Lese gerade": Abrisskarte mit Marke, Balken und großem Fortschritt-Knopf */
+      .book.ticket { margin-bottom: 8px; border: 0; padding: 0; cursor: pointer; }
+      .ticket-content {
+        padding: 16px 4px 16px 16px;
         display: grid; grid-template-columns: 1fr auto; column-gap: 12px; align-items: end;
       }
-      .book[data-status="reading"] > * { grid-column: 1 / -1; }
-      .book[data-status="reading"] .cover-stamp { width: 72px; --stamp-pad: 5px; --d: 6px; --h: 1.9px; }
-      .book[data-status="reading"] .book-title { font-size: 1.35rem; }
-      .book[data-status="reading"] > .book-meta { display: none; }
-      .book[data-status="reading"] > .progress { grid-column: 1; margin: 8px 0 0; }
-      .book[data-status="reading"] > .book-actions {
-        display: flex; grid-column: 2; grid-row: span 1; margin: 0; padding: 0; border: 0; align-self: end;
+      .ticket-content > * { grid-column: 1 / -1; }
+      .ticket .cover-stamp { width: 66px; --stamp-pad: 5px; --d: 6px; --h: 1.9px; }
+      .ticket .book-title { font-size: 1.3rem; }
+      .ticket-content > .book-meta { display: none; }
+      .ticket-content > .progress { grid-column: 1; margin: 8px 0 0; }
+      .ticket-content > .book-actions {
+        display: flex; grid-column: 2; margin: 0; padding: 0; border: 0; align-self: end;
       }
-      .book[data-status="reading"] > .book-actions .btn:not(.btn-primary) { display: none; }
-      .book[data-status="reading"] > .book-actions .btn-primary { min-height: 48px; padding: 10px 18px; font-size: 13px; }
+      .ticket-content > .book-actions .btn:not(.btn-primary) { display: none; }
+      .ticket-content > .book-actions .btn-primary { min-height: 48px; padding: 10px 16px; font-size: 13px; }
+      .ticket .row-more { margin-right: 0; }
 
       .empty { border-top: 0; }
 
@@ -762,7 +765,7 @@
         <!-- Design-Schalter: System → Hell → Dunkel; Beschriftung zeigt die aktuelle Wahl -->
         <!-- Auf dem Handy nur als Symbol (SVG, kein Emoji); der Text steht dann im aria-label -->
         <button type="button" class="icon-btn" id="themeBtn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" class="icon-fill"/></svg><span class="btn-text"><span class="theme-prefix">Design: </span><span id="themeLabel">System</span></span></button>
-        <button type="button" class="icon-btn" id="settingsBtn" aria-label="Einstellungen"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span class="btn-text">Einstellungen</span></button>
+        <button type="button" class="icon-btn" id="settingsBtn" aria-label="Einstellungen"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.5M12 18v2.5M3.5 12H6M18 12h2.5M6 6l1.8 1.8M16.2 16.2L18 18M18 6l-1.8 1.8M7.8 16.2L6 18"/></svg><span class="btn-text">Einstellungen</span></button>
       </span>
     </div>
   </header>
@@ -776,7 +779,7 @@
   <main>
     <div class="toolbar">
       <!-- Ansicht: offene Bücher (Leseliste), Archiv (Gelesen/Abgebrochen) oder alle -->
-      <div class="tabs" id="views" role="tablist" aria-label="Ansicht"></div>
+      <div class="pillseg views" id="views" role="tablist" aria-label="Ansicht"></div>
       <label for="search" class="visually-hidden">Suche nach Titel, Autor:in, Reihe oder ISBN</label>
       <div class="search-row">
         <input id="search" class="search" type="search" placeholder="Titel, Autor:in, Reihe, ISBN …" autocomplete="off">

@@ -635,7 +635,13 @@ function chip(className, dataKey, key, label, count, pressed) {
 function renderFilters() {
   const books = allBooks();
 
-  els.views.innerHTML = '';
+  // Pillen-Umschalter (Porto): die Markierung <i> bleibt erhalten, damit sie zur neuen Ansicht gleitet
+  let marker = els.views.querySelector('i');
+  if (!marker) marker = el('i');
+  els.views.replaceChildren(marker);
+  const viewKeys = Object.keys(List.VIEWS);
+  els.views.style.setProperty('--n', viewKeys.length);
+  els.views.style.setProperty('--i', Math.max(0, viewKeys.indexOf(activeView)));
   for (const [key, view] of Object.entries(List.VIEWS)) {
     const tab = document.createElement('button');
     tab.type = 'button';
@@ -775,7 +781,7 @@ function motifFor(id) {
  */
 function coverStamp(book) {
   const { entry, work } = book;
-  const stamp = el('span', 'stamp cover-stamp');
+  const stamp = el('span', 'stamp lift cover-stamp');
   stamp.setAttribute('aria-hidden', 'true');
   // Motiv sofort zeigen, ein gespeichertes Cover ersetzt es, sobald es geladen ist
   stamp.innerHTML = Porto.motif(motifFor(work.id));
@@ -902,6 +908,19 @@ function bookCard(book, inQueue = false) {
     actions.append(added, editBtn, delBtn);
   }
   li.appendChild(actions);
+
+  // "Lese gerade" als Abrisskarte (Porto .ticket): Inhalt links, Abschnitt mit dem Stand rechts
+  if (book.status === 'reading') {
+    const pct = Progress.percentOf(entry.progress, totalPagesOf(entry));
+    const body = el('div', 'ticket-body');
+    const content = el('div', 'ticket-content');
+    content.append(...li.childNodes);
+    const stub = el('div', 'ticket-stub', pct != null ? `${Math.round(pct)} % gelesen` : 'Lese gerade');
+    stub.setAttribute('aria-hidden', 'true');
+    body.append(content, stub);
+    li.appendChild(body);
+    li.classList.add('ticket');
+  }
 
   return li;
 }
@@ -1665,7 +1684,16 @@ els.views.addEventListener('click', (e) => {
   activeView = tab.dataset.view;
   activeFilter = 'all';
   render();
+  staggerList();
 });
+
+/** Bücher heben sich nach einem Ansichtswechsel nacheinander an (Porto .m-stagger), danach ist Ruhe. */
+let staggerTimer = null;
+function staggerList() {
+  clearTimeout(staggerTimer);
+  Porto.replay(els.list, 'm-stagger');
+  staggerTimer = setTimeout(() => els.list.classList.remove('m-stagger'), 1200);
+}
 
 // Status-Chips (ein Listener für alle Chips)
 els.filters.addEventListener('click', (e) => {
