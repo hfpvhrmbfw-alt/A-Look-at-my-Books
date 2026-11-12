@@ -26,6 +26,8 @@ let activeFormat = 'all';    // Schlüssel aus List.FORMAT_FILTERS
 let searchTerm = '';
 let activeGenre = '';        // '' oder ein Genre/Tag
 let minScore = null;         // null oder Mindestscore
+let activeFolder = null;     // aus dem Album gewählte Mappe { key, title, ids } oder null
+let statPeriod = 'month';    // Zeitraum der Statistik: 'week' | 'month' | 'year'
 let editingId = null;        // ID des Eintrags im Bearbeiten-Dialog (null = neues Buch)
 let formRating = 0;          // Sterne im Formular (0 = keine): Priorität bzw. Bewertung nach dem Lesen
 let progressId = null;
@@ -591,7 +593,8 @@ function visibleBooks() {
     scoreOf,
     search: searchTerm,
   });
-  return List.sortBooks(list, state.settings.sort, { scoreOf });
+  const inFolder = activeFolder ? list.filter((b) => activeFolder.ids.includes(b.id)) : list;
+  return List.sortBooks(inFolder, state.settings.sort, { scoreOf });
 }
 
 /** Bücher der Warteschlange "Als Nächstes" in ihrer manuellen Reihenfolge. */
@@ -767,7 +770,7 @@ function progressElement(entry) {
 
 // Zuletzt gezeichneter Status je Buch und Ansicht: wechselt ein Buch auf Gelesen/Abgebrochen,
 // schlägt der Poststempel beim nächsten Zeichnen dieser Ansicht einmal sichtbar auf.
-const lastStatus = { regal: new Map(), detail: new Map() };
+const lastStatus = { regal: new Map(), detail: new Map(), album: new Map() };
 
 /** Festes Motiv je Werk (aus der Id berechnet), damit es beim Neuzeichnen nicht wechselt. */
 function motifFor(id) {
@@ -787,7 +790,7 @@ function isDone(status) {
  * opts.tag: 'span' (Standard) oder 'button'; opts.big: großer Stempel mit Wellen;
  * opts.scope: 'regal' oder 'detail' (für das einmalige Aufschlagen des Stempels).
  */
-function coverStamp(book, { tag = 'span', big = false, scope = 'regal', className = '' } = {}) {
+function coverStamp(book, { tag = 'span', big = false, scope = 'regal', className = '', plain = false } = {}) {
   const { entry, work } = book;
   const stamp = el(tag, `stamp ${className}`.trim());
   if (tag === 'span') stamp.setAttribute('aria-hidden', 'true');
@@ -803,6 +806,7 @@ function coverStamp(book, { tag = 'span', big = false, scope = 'regal', classNam
       stamp.querySelector('.stamp-img').replaceWith(img);
     });
   }
+  if (plain) return stamp;
   if (isDone(book.status)) {
     const end = entry.progress.endDate;
     const d = end ? new Date(end + 'T00:00:00') : null;
@@ -908,6 +912,15 @@ function renderRegal() {
   }
   counter.dataset.ready = '1';
 
+  if (activeFolder) {
+    // Mappe ist weg (z. B. Buch gelöscht): Auswahl aufheben
+    const ids = new Set(state.entries.map((e) => e.id));
+    activeFolder.ids = activeFolder.ids.filter((id) => ids.has(id));
+    if (!activeFolder.ids.length) activeFolder = null;
+  }
+  $('folderChip').hidden = !activeFolder;
+  if (activeFolder) $('folderName').textContent = activeFolder.title;
+
   const list = visibleBooks();
   els.list.innerHTML = '';
   for (const group of groupedBooks(list)) {
@@ -933,7 +946,7 @@ function renderRegal() {
         '<h2>Dein Regal ist noch leer</h2>' +
         '<p>Tippe auf <strong>+</strong>, um dein erstes Buch hinzuzufügen.</p>';
     } else if (activeView === 'open' && activeFilter === 'all' && activeFormat === 'all' &&
-               !searchTerm && !activeGenre && minScore == null) {
+               !searchTerm && !activeGenre && minScore == null && !activeFolder) {
       els.empty.innerHTML = '<p>Keine offenen Bücher. Gelesene findest du im <strong>Archiv</strong>.</p>';
     } else {
       els.empty.innerHTML = '<p>Keine Bücher gefunden.</p>';
@@ -1093,6 +1106,208 @@ function renderDetail(id) {
   return true;
 }
 
+/* ---------- Album: Mappen (Zuordnung in js/stats.js) ---------- */
+
+/** Bücher in der Form, die js/stats.js erwartet. */
+function statBooks() {
+  return allBooks().map((b) => ({
+    id: b.id,
+    title: b.title,
+    pages: totalPagesOf(b.entry),
+    status: b.status,
+    progress: b.entry.progress,
+    genres: List.genresOf(b),
+  }));
+}
+
+// Mappenfarben: Hintergrund und Schrift darauf
+const FOLDER_INK = {
+  accent: ['var(--accent)', 'var(--accent-ink)'],
+  himmel: ['var(--himmel)', '#1C1A16'],
+  senf: ['var(--senf)', '#1C1A16'],
+  rose: ['var(--rose)', '#1C1A16'],
+};
+
+function markenText(n) {
+  return n === 1 ? '1 Marke' : `${n} Marken`;
+}
+
+function renderAlbum() {
+  const books = allBooks();
+  const byId = new Map(books.map((b) => [b.id, b]));
+  const list = Stats.folders(statBooks());
+
+  // Bogen im Hintergrund: die sechs Motive, nur Schmuck
+  const bg = $('albumBg');
+  if (!bg.childElementCount) bg.innerHTML = Porto.motifs.map((m) => `<span class="stamp">${Porto.motif(m)}</span>`).join('');
+
+  $('albumHint').textContent = list.length ? `${list.length} ${list.length === 1 ? 'Mappe' : 'Mappen'} · ${markenText(books.length)}` : '';
+  $('albumEmpty').hidden = list.length > 0;
+  const box = $('folders');
+  box.innerHTML = '';
+  for (const f of list) {
+    const fig = el('figure');
+    const btn = el('button', 'folder');
+    btn.type = 'button';
+    btn.dataset.folder = f.key;
+    btn.setAttribute('aria-expanded', 'false');
+    btn.setAttribute('aria-label', `Mappe ${f.title}, ${markenText(f.ids.length)}. Antippen öffnet, nochmal Antippen zeigt sie im Regal.`);
+    // Tannengrün ist die Grundfarbe der Mappe, die anderen Farben setzen --tanne um
+    const colors = FOLDER_INK[f.color];
+    if (colors) {
+      btn.style.setProperty('--tanne', colors[0]);
+      btn.style.setProperty('--tanne-ink', colors[1]);
+    }
+    btn.appendChild(el('span', 'folder-back'));
+    for (const id of f.ids.slice(0, 3)) {
+      const item = el('span', 'folder-item');
+      item.appendChild(coverStamp(byId.get(id), { scope: 'album', plain: true }));
+      btn.appendChild(item);
+    }
+    const front = el('span', 'folder-front');
+    front.appendChild(el('b', null, f.title));
+    const kind = f.kind === 'year' ? 'Lesejahr' : f.kind === 'genre' ? 'Tag/Genre' : 'Noch zu lesen';
+    const sub = el('span');
+    sub.append(kind, el('br'), markenText(f.ids.length));
+    front.appendChild(sub);
+    btn.appendChild(front);
+    fig.appendChild(btn);
+    box.appendChild(fig);
+  }
+  albumFolders = list;
+}
+let albumFolders = [];
+
+/** Mappe im Regal zeigen: alle Ansichten, nur die Bücher der Mappe. */
+function showFolderInRegal(folder) {
+  activeFolder = { key: folder.key, title: folder.title, ids: folder.ids.slice() };
+  activeView = 'all';
+  activeFilter = 'all';
+  render();
+  go('#regal');
+}
+
+/* ---------- Statistik ---------- */
+
+
+function sparkPath(values) {
+  // Linie über das ganze Jahr: x je Monat, y nach Seiten je Tag (oben = viel)
+  const max = Math.max(1, ...values);
+  const pts = values.map((v, i) => [Math.round((i / 11) * 300 * 10) / 10, Math.round((58 - (v / max) * 50) * 10) / 10]);
+  let d = `M${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, y0] = pts[i - 1];
+    const [x1, y1] = pts[i];
+    const mx = (x0 + x1) / 2;
+    d += ` C${mx} ${y0} ${mx} ${y1} ${x1} ${y1}`;
+  }
+  return { d, avgY: 58 - ((values.reduce((a, b) => a + b, 0) / values.length) / max) * 50 };
+}
+
+function statTicket(label, value, line, stub) {
+  const t = el('div', 'ticket');
+  const body = el('div', 'ticket-body');
+  const main = el('div', 'ticket-main');
+  main.appendChild(el('small', null, label));
+  main.appendChild(el('b', null, value));
+  if (line) main.appendChild(el('span', null, line));
+  body.appendChild(main);
+  body.appendChild(el('div', 'ticket-stub', stub));
+  t.appendChild(body);
+  return t;
+}
+
+function shortDate(day) {
+  return new Date(day + 'T00:00:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'long' });
+}
+
+let statBarsData = [];
+function renderStats() {
+  const today = Progress.today();
+  const year = Number(today.slice(0, 4));
+  const books = statBooks();
+  const byDay = Stats.pagesByDay(books);
+  const p = Stats.period(byDay, statPeriod, today);
+
+  // Umschalter
+  const seg = $('periodSeg');
+  const keys = [...seg.querySelectorAll('button')].map((b) => b.dataset.period);
+  seg.style.setProperty('--i', keys.indexOf(statPeriod));
+  seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.period === statPeriod)));
+  const month = Stats.MONTHS_LONG[Number(today.slice(5, 7)) - 1];
+  $('periodLabel').textContent = `gelesene Seiten · ${statPeriod === 'week' ? 'diese Woche' : statPeriod === 'month' ? month : year}`;
+  const total = $('pagesTotal');
+  if (total.dataset.ready) Porto.countTo(total, p.total, 600);
+  else total.textContent = p.total.toLocaleString('de-DE');
+  total.dataset.ready = '1';
+
+  // Striche: neu anlegen, dann wachsen lassen
+  const max = Math.max(1, ...p.bars.map((b) => b.value));
+  const bars = $('bars');
+  bars.innerHTML = '';
+  bars.setAttribute('aria-label', `Gelesene Seiten je ${statPeriod === 'year' ? 'Monat' : 'Tag'}, zusammen ${p.total}`);
+  statBarsData = p.bars;
+  const nowKey = statPeriod === 'year' ? today.slice(0, 7) : today;
+  // Hinweis zeigt den letzten Strich mit Seiten bis heute, sonst heute
+  const todayIdx = p.bars.findIndex((b) => b.key === nowKey);
+  let current = todayIdx < 0 ? p.bars.length - 1 : todayIdx;
+  for (let i = current; i >= 0; i--) if (p.bars[i].value) { current = i; break; }
+  p.bars.forEach((b, i) => {
+    const node = el('i');
+    node.dataset.k = i;
+    node.style.setProperty('--v', 0);
+    if (i === current) node.classList.add('on');
+    bars.appendChild(node);
+  });
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    bars.querySelectorAll('i').forEach((node, i) => {
+      const v = p.bars[i].value;
+      node.style.setProperty('--v', v ? Math.max(4, Math.round((v / max) * 100)) : 2);
+    });
+  }));
+  showBarTip(current);
+  $('barAxis').replaceChildren(...p.axis.map((a) => el('span', null, a)));
+
+  // Lesetempo übers Jahr
+  const t = Stats.tempo(byDay, today);
+  const spark = $('spark');
+  $('tempoHint').textContent = `Lesetempo ${year}, Seiten je Tag`;
+  if (t.some((v) => v > 0) && t.length >= 2) {
+    const s = sparkPath(t);
+    spark.innerHTML = `<path d="${s.d}" style="--len:4000"/><path class="a" d="M0 ${s.avgY.toFixed(1)} H300" style="stroke-dasharray:3 5;animation:none"/>`;
+    Porto.replay(spark, 'm-draw');
+  } else {
+    spark.innerHTML = '';
+  }
+
+  // Kennzahlen als Abrisskarten
+  const tickets = $('statTickets');
+  tickets.innerHTML = '';
+  const streak = Stats.longestStreak(byDay);
+  tickets.appendChild(statTicket('Längste Serie',
+    streak.days ? (streak.days === 1 ? '1 Tag' : `${streak.days} Tage`) : 'noch keine',
+    streak.days > 1 ? `${shortDate(streak.start)} bis ${shortDate(streak.end)}` : streak.days ? shortDate(streak.end) : 'Trag deinen Fortschritt ein, dann zählt die Serie.',
+    'Rekord'));
+  const thick = Stats.thickest(books, year);
+  tickets.appendChild(statTicket('Dickstes Buch',
+    thick ? thick.title : 'noch keins',
+    thick ? `${thick.pages.toLocaleString('de-DE')} Seiten` : `Noch kein Buch mit Seitenzahl in ${year} gelesen.`,
+    String(year)));
+  const read = Stats.readIn(books, year);
+  const pagesRead = Object.entries(byDay).filter(([d]) => d.startsWith(String(year))).reduce((sum, [, n]) => sum + n, 0);
+  tickets.appendChild(statTicket('Gelesen',
+    read.length === 1 ? '1 Buch' : `${read.length} Bücher`,
+    `${pagesRead.toLocaleString('de-DE')} Seiten im Jahr`,
+    String(year)));
+}
+
+function showBarTip(i) {
+  const b = statBarsData[i];
+  if (!b) return;
+  $('bars').querySelectorAll('i').forEach((n, k) => n.classList.toggle('on', k === i));
+  $('barTip').textContent = `${b.label} · ${b.value.toLocaleString('de-DE')} S.`;
+}
+
 /* ---------- Ansichten und Adressen (#regal, #buch/<id>) ---------- */
 
 let currentRoute = { view: 'regal', id: null };
@@ -1101,6 +1316,8 @@ let navigatedInApp = false;   // true, sobald innerhalb der App navigiert wurde 
 function parseRoute() {
   const m = location.hash.match(/^#buch\/(.+)$/);
   if (m) return { view: 'detail', id: decodeURIComponent(m[1]) };
+  if (location.hash === '#album') return { view: 'album', id: null };
+  if (location.hash === '#zahlen') return { view: 'zahlen', id: null };
   return { view: 'regal', id: null };
 }
 
@@ -1125,7 +1342,9 @@ function showRoute() {
     history.replaceState(null, '', '#regal');
     currentRoute = { view: 'regal', id: null };
   }
-  const views = { regal: $('viewRegal'), detail: $('viewDetail') };
+  if (route.view === 'album' && changed) renderAlbum();
+  if (route.view === 'zahlen' && changed) renderStats();
+  const views = { regal: $('viewRegal'), detail: $('viewDetail'), album: $('viewAlbum'), zahlen: $('viewStats') };
   for (const [key, node] of Object.entries(views)) {
     const show = key === currentRoute.view;
     if (show && changed) Porto.replay(node, 'enter');
@@ -1133,8 +1352,12 @@ function showRoute() {
   }
   // Detailseite hat ihren eigenen Kopf (zurück, Status, Bearbeiten)
   document.querySelector('.app-head').hidden = currentRoute.view === 'detail';
+  $('searchBtn').hidden = currentRoute.view !== 'regal';
+  // In der Leiste trägt nur der aktive Bereich seine Beschriftung (Porto .pillbar)
+  const area = currentRoute.view === 'detail' ? 'regal' : currentRoute.view;
   document.querySelectorAll('#pillbar [data-go]').forEach((b) => {
-    b.setAttribute('aria-pressed', String(b.dataset.go === (currentRoute.view === 'detail' ? 'regal' : currentRoute.view)));
+    b.setAttribute('aria-pressed', String(b.dataset.go === area));
+    b.querySelector('.lbl').classList.toggle('vh', b.dataset.go !== area);
   });
   if (changed) window.scrollTo(0, 0);
 }
@@ -1148,6 +1371,8 @@ function render() {
     showRoute();
   }
   renderRegal();
+  if (currentRoute.view === 'album') renderAlbum();
+  if (currentRoute.view === 'zahlen') renderStats();
 }
 
 /* ====================================================================
@@ -1970,6 +2195,38 @@ $('pillbar').addEventListener('click', (e) => {
   const b = e.target.closest('[data-go]');
   if (b) go(`#${b.dataset.go}`);
 });
+
+// Album: erstes Antippen klappt die Mappe auf, das zweite zeigt ihre Bücher im Regal
+$('folders').addEventListener('click', (e) => {
+  const btn = e.target.closest('.folder');
+  if (!btn) return;
+  if (btn.classList.contains('open')) {
+    const f = albumFolders.find((x) => x.key === btn.dataset.folder);
+    if (f) showFolderInRegal(f);
+    return;
+  }
+  $('folders').querySelectorAll('.folder.open').forEach((o) => { o.classList.remove('open'); o.setAttribute('aria-expanded', 'false'); });
+  btn.classList.add('open');
+  btn.setAttribute('aria-expanded', 'true');
+});
+$('folderClear').addEventListener('click', () => {
+  activeFolder = null;
+  render();
+});
+
+// Statistik: Zeitraum umschalten, Striche berühren zeigt ihren Wert
+$('periodSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-period]');
+  if (!b || b.dataset.period === statPeriod) return;
+  statPeriod = b.dataset.period;
+  renderStats();
+});
+function barAt(e) {
+  const node = document.elementFromPoint(e.clientX, e.clientY);
+  return node && node.closest && node.closest('#bars i');
+}
+$('bars').addEventListener('pointerdown', (e) => { const n = barAt(e); if (n) showBarTip(Number(n.dataset.k)); });
+$('bars').addEventListener('pointermove', (e) => { const n = barAt(e); if (n) showBarTip(Number(n.dataset.k)); });
 
 /* ---------- Suche und Filter (Lupe im Kopf) ---------- */
 function setToolbarOpen(open) {

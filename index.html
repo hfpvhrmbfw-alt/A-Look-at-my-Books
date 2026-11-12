@@ -217,6 +217,21 @@
     .tag { font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
 
     /* ---------- Schwebende Leiste (Porto .dock) ---------- */
+    /* Album und Statistik */
+    #viewAlbum, #viewStats { max-width: calc(var(--colw) + 32px); }
+    .album .p-top { margin-bottom: 0; }
+    #viewAlbum { overflow-x: clip; }
+    #viewAlbum .album-bg { top: 6px; right: -70px; width: 170px; }
+    @media (min-width: 600px) { #viewAlbum .album-bg { right: 0; } }
+    .folders .folder:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+    .folders .folder-item .stamp { width: 100%; }
+    .folder-chip { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; }
+    .folder-chip .chip { display: inline-flex; align-items: center; gap: 8px; }
+    .hairbars i { touch-action: pan-y; }
+    .tempo-hint { margin-top: 26px; }
+    .spark { overflow: visible; }
+    .spark path { vector-effect: non-scaling-stroke; }
+    .stat-empty { color: var(--muted); font-size: 14px; margin: 8px 0 0; }
     .app-dock { position: fixed; left: 0; right: 0; bottom: calc(14px + env(safe-area-inset-bottom)); margin: 0; z-index: 15; }
     .pillbar .icon { width: 20px; height: 20px; }
     .fab .icon { width: 26px; height: 26px; stroke-width: 2.2; }
@@ -562,6 +577,9 @@
     <!-- Ansicht: offene Bücher (Leseliste), Archiv (Gelesen/Abgebrochen) oder alle -->
     <div class="pillseg views" id="views" role="tablist" aria-label="Ansicht"></div>
 
+    <!-- Aus dem Album gewählte Mappe: Antippen hebt die Auswahl wieder auf -->
+    <div class="folder-chip" id="folderChip" hidden><button type="button" class="chip" id="folderClear" aria-pressed="true" aria-label="Mappe abwählen">Mappe <b id="folderName"></b><span aria-hidden="true">×</span></button></div>
+
     <!-- Suche und Filter: erst nach Antippen der Lupe sichtbar (bleibt offen, solange etwas gesucht oder gefiltert wird) -->
     <div class="toolbar" id="toolbar" hidden>
       <div class="search-row">
@@ -611,10 +629,40 @@
        ==================================================================== -->
   <main class="view" id="viewDetail" hidden></main>
 
+  <!-- ====================================================================
+       Album (#album): Sammlungen als Mappen. Antippen klappt auf, nochmal Antippen zeigt sie im Regal.
+       ==================================================================== -->
+  <main class="view" id="viewAlbum" hidden>
+    <div class="album">
+      <div class="stamp-sheet album-bg" style="--cols:3" id="albumBg" aria-hidden="true"></div>
+      <div class="p-top"><h1 class="p-title">Album</h1></div>
+      <p class="p-hint" id="albumHint"></p>
+      <div class="folders" id="folders"></div>
+      <div class="empty" id="albumEmpty" hidden>Noch keine Mappen. Sobald mindestens zwei Bücher ein Lesejahr, einen Tag oder ein Genre teilen, liegt hier eine Mappe.</div>
+    </div>
+  </main>
+
+  <!-- ====================================================================
+       Statistik (#zahlen): gelesene Seiten, Strichdiagramm, Lesetempo, Kennzahlen (Logik in js/stats.js)
+       ==================================================================== -->
+  <main class="view" id="viewStats" hidden>
+    <div class="p-top"><h1 class="p-title">Statistik</h1></div>
+    <div class="pillseg" id="periodSeg" role="group" aria-label="Zeitraum" style="--n:3"><i></i><button type="button" data-period="week" aria-pressed="false">Woche</button><button type="button" data-period="month" aria-pressed="true">Monat</button><button type="button" data-period="year" aria-pressed="false">Jahr</button></div>
+    <div class="statrow"><div><div class="p-hint" id="periodLabel">gelesene Seiten</div><b class="bigstat" id="pagesTotal">0</b></div><span class="tipv" id="barTip" aria-live="polite"></span></div>
+    <div class="hairbars" id="bars" role="img" style="--hair-h:110px"></div>
+    <div class="axis" id="barAxis"></div>
+    <div class="p-hint tempo-hint" id="tempoHint">Lesetempo, Seiten je Tag</div>
+    <svg class="spark" id="spark" viewBox="0 0 300 64" preserveAspectRatio="none" aria-hidden="true"></svg>
+    <div class="axis" aria-hidden="true"><span>J</span><span>F</span><span>M</span><span>A</span><span>M</span><span>J</span><span>J</span><span>A</span><span>S</span><span>O</span><span>N</span><span>D</span></div>
+    <div class="stat-tickets" id="statTickets"></div>
+  </main>
+
   <!-- Schwebende Leiste unten (Porto .dock): Bereiche und rechts der runde Plus-Knopf -->
   <nav class="dock app-dock" aria-label="Bereiche">
     <div class="pillbar" id="pillbar">
-      <button type="button" data-go="regal" aria-pressed="true"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M9.5 4v16M14 5.5l4.5 14"/><path d="M3 20h18"/></svg>Regal</button>
+      <button type="button" data-go="regal" aria-pressed="true"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M9.5 4v16M14 5.5l4.5 14"/><path d="M3 20h18"/></svg><span class="lbl">Regal</span></button>
+      <button type="button" data-go="album" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5a1.5 1.5 0 0 1 1.5-1.5H10l2 2.5h6.5A1.5 1.5 0 0 1 20 10v7.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/></svg><span class="lbl vh">Album</span></button>
+      <button type="button" data-go="zahlen" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M10 20V5M15 20v-7M20 20V8"/></svg><span class="lbl vh">Zahlen</span></button>
     </div>
     <button class="fab" id="addBtn" type="button" aria-label="Buch hinzufügen" title="Buch hinzufügen"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
   </nav>
@@ -874,6 +922,7 @@
   <script src="js/list.js"></script>
   <script src="js/score.js"></script>
   <script src="js/progress.js"></script>
+  <script src="js/stats.js"></script>
   <script src="js/sources.js"></script>
   <script src="js/enrich.js"></script>
   <script src="js/covers.js"></script>
