@@ -126,6 +126,7 @@ npm test        # oder: node --test
 | --- | --- |
 | `index.html` | App-eigenes Design (CSS) und Gerüst (HTML) |
 | `css/tokens-porto.css`, `css/components.css` | Stil Porto aus dem Castra-Designsystem: Farben, Schriften, Formen und Bausteine (Briefmarke, Stempel, Abrisskarte …). Nicht von Hand ändern, bei einem Update ersetzen |
+| `css/porto-formen.css`, `css/porto-seiten.css` | Porto-Formen (Zähnung, Lochreihen, Stempel-Häkchen …) und Seitenaufbauten (Regal, Album, Detailseite, Statistik, Leiste). Ebenfalls unverändert aus dem Porto-Paket |
 | `js/porto.js` | Porto-Helfer: Poststempel, Motive für Marken ohne Cover, Symbole, Bewegung |
 | `js/app.js` | Oberfläche: Liste, Dialoge, Ereignisse |
 | `js/model.js` | Datenmodell Werk/Ausgabe/Eintrag, Migration, Laden |
@@ -133,6 +134,7 @@ npm test        # oder: node --test
 | `js/list.js` | Filtern, Sortieren, Warteschlange |
 | `js/score.js` | Score-Berechnung |
 | `js/progress.js` | Lesefortschritt |
+| `js/stats.js` | Statistik (Seiten je Tag, Zeiträume, Serie, Lesetempo) und Album-Mappen |
 | `js/sources.js` | Abfrage und Auswertung der Quellen |
 | `js/enrich.js` | Zusammenführen, Vergleich, Passung, Cache |
 | `js/covers.js` | Cover in IndexedDB |
