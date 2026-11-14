@@ -1332,8 +1332,49 @@ function goBack() {
   else location.hash = '#regal';
 }
 
+/* Blattwechsel zwischen den Bereichen der Leiste: seitlich per View Transition,
+   Richtung nach der Reihenfolge in der Leiste. Ohne View Transitions (älteres iOS)
+   und für die Detailseite bleibt das Einblenden über .enter. */
+const AREAS = ['regal', 'album', 'zahlen'];
+let blattWechsel = null;
+
+function onHashChange() {
+  const from = AREAS.indexOf(currentRoute.view);
+  const to = AREAS.indexOf(parseRoute().view);
+  if (!document.startViewTransition || from < 0 || to < 0 || from === to) { showRoute(); return; }
+  if (blattWechsel) blattWechsel.skipTransition();   // schnelles Tippen: alten Wechsel abbrechen
+  const root = document.documentElement;
+  root.dataset.blatt = to > from ? 'vor' : 'zurueck';
+  const t = document.startViewTransition(() => showRoute({ slide: true }));
+  blattWechsel = t;
+  t.finished.finally(() => {
+    if (blattWechsel !== t) return;
+    blattWechsel = null;
+    delete root.dataset.blatt;
+  });
+}
+
+/** Schiebt die orange Kugel der Leiste unter den aktiven Knopf.
+ *  Gemessen wird an einer unsichtbaren Kopie im Endzustand, damit die laufende
+ *  Auf-/Zuklapp-Bewegung der Beschriftungen nicht gestört wird. */
+function movePillGlow() {
+  const bar = $('pillbar');
+  const ghost = bar.cloneNode(true);
+  ghost.removeAttribute('id');
+  ghost.classList.add('still');
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
+  bar.after(ghost);
+  const active = ghost.querySelector('[aria-pressed="true"]');
+  if (active) {
+    bar.style.setProperty('--glow-x', `${active.offsetLeft}px`);
+    bar.style.setProperty('--glow-w', `${active.offsetWidth}px`);
+  }
+  ghost.remove();
+}
+
 /** Zeigt die Ansicht zur aktuellen Adresse. */
-function showRoute() {
+function showRoute({ slide = false } = {}) {
   const route = parseRoute();
   const changed = route.view !== currentRoute.view || route.id !== currentRoute.id;
   currentRoute = route;
@@ -1347,7 +1388,9 @@ function showRoute() {
   const views = { regal: $('viewRegal'), detail: $('viewDetail'), album: $('viewAlbum'), zahlen: $('viewStats') };
   for (const [key, node] of Object.entries(views)) {
     const show = key === currentRoute.view;
-    if (show && changed) Porto.replay(node, 'enter');
+    // Beim seitlichen Blattwechsel übernimmt die View Transition die Bewegung;
+    // .enter muss dann weg, sonst spielt es beim Einblenden noch einmal ab.
+    if (show && changed) { if (slide) node.classList.remove('enter'); else Porto.replay(node, 'enter'); }
     node.hidden = !show;
   }
   // Detailseite hat ihren eigenen Kopf (zurück, Status, Bearbeiten)
@@ -1357,12 +1400,23 @@ function showRoute() {
   const area = currentRoute.view === 'detail' ? 'regal' : currentRoute.view;
   document.querySelectorAll('#pillbar [data-go]').forEach((b) => {
     b.setAttribute('aria-pressed', String(b.dataset.go === area));
-    b.querySelector('.lbl').classList.toggle('vh', b.dataset.go !== area);
+    b.querySelector('.lbl').classList.toggle('off', b.dataset.go !== area);
   });
+  movePillGlow();
+  // Beim Blattwechsel läuft das mitten in der View Transition, also unsichtbar
   if (changed) window.scrollTo(0, 0);
 }
 
-window.addEventListener('hashchange', showRoute);
+window.addEventListener('hashchange', () => onHashChange());
+// Kugel neu ausrichten, wenn sich die Breiten ändern (Schrift geladen, Drehen, Fenstergröße)
+function settlePillGlow() {
+  const bar = $('pillbar');
+  bar.classList.add('still');
+  movePillGlow();
+  requestAnimationFrame(() => requestAnimationFrame(() => bar.classList.remove('still')));
+}
+window.addEventListener('resize', settlePillGlow);
+if (document.fonts) document.fonts.ready.then(settlePillGlow);
 
 /** Zeichnet alle Ansichten neu. Wird nach jeder Änderung aufgerufen.
  *  Die Detailseite zuerst, damit ihr Stempel nach "Als gelesen stempeln" aufschlägt. */

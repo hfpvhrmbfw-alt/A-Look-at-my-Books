@@ -241,6 +241,48 @@
     /* Ansichtswechsel: neue Seite gleitet herein (Bewegung „Gleiten“ aus components.css) */
     .view.enter { animation: page-in var(--dur-page) var(--ease-glide) both; }
 
+    /* ---------- Blattwechsel über die Leiste (Regal ↔ Album ↔ Zahlen) ----------
+       Die orange Kugel ist ein eigenes Element (.pill-glow), das unter den aktiven Knopf
+       gleitet; js/app.js setzt --glow-x/--glow-w auf die Endlage. Die Beschriftung klappt
+       mit derselben Kurve und Dauer auf und zu, darum laufen Kugel und Knöpfe gleich. */
+    :root { --dur-blatt: 320ms; }
+    .app-dock .pillbar { position: relative; isolation: isolate; }
+    .app-dock .pillbar button { position: relative; z-index: 1; gap: 0; transition: color var(--dur-blatt) var(--ease-glide); }
+    .app-dock .pillbar button[aria-pressed="true"] { background: none; }
+    .app-dock .pillbar .lbl {
+      display: inline-block; overflow: hidden; white-space: nowrap;
+      max-width: 8em; margin-left: 7px; opacity: 1;
+      transition: max-width var(--dur-blatt) var(--ease-glide), margin-left var(--dur-blatt) var(--ease-glide), opacity var(--dur-blatt) ease-out;
+    }
+    .app-dock .pillbar .lbl.off { max-width: 0; margin-left: 0; opacity: 0; transition-timing-function: var(--ease-glide), var(--ease-glide), ease-in; }
+    .pill-glow {
+      position: absolute; z-index: 0; top: 5px; bottom: 5px; left: 0;
+      width: var(--glow-w, 0); transform: translateX(var(--glow-x, 0));
+      border-radius: 999px; background: var(--accent); pointer-events: none;
+      transition: transform var(--dur-blatt) var(--ease-glide), width var(--dur-blatt) var(--ease-glide);
+    }
+    .app-dock .pillbar.still .pill-glow, .app-dock .pillbar.still .lbl, .app-dock .pillbar.still button { transition: none; }
+    /* Leiste und Kopf bleiben beim Blattwechsel stehen, nur das Blatt darunter bewegt sich */
+    .app-dock { view-transition-name: leiste; }
+    .app-head { view-transition-name: kopf; }
+    ::view-transition-old(leiste) { display: none; }
+    ::view-transition-new(leiste) { animation: none; }
+    ::view-transition-group(kopf) { animation-duration: var(--dur-blatt); }
+    @media (prefers-reduced-motion: no-preference) {
+      @keyframes blatt-aus-links { to { opacity: 0; transform: translateX(-28px); } }
+      @keyframes blatt-aus-rechts { to { opacity: 0; transform: translateX(28px); } }
+      @keyframes blatt-ein-rechts { from { opacity: 0; transform: translateX(36px); } }
+      @keyframes blatt-ein-links { from { opacity: 0; transform: translateX(-36px); } }
+      html[data-blatt="vor"]::view-transition-old(root) { animation: blatt-aus-links calc(var(--dur-blatt) * .55) var(--ease-leave) both; }
+      html[data-blatt="vor"]::view-transition-new(root) { animation: blatt-ein-rechts var(--dur-blatt) var(--ease-glide) calc(var(--dur-blatt) * .2) both; }
+      html[data-blatt="zurueck"]::view-transition-old(root) { animation: blatt-aus-rechts calc(var(--dur-blatt) * .55) var(--ease-leave) both; }
+      html[data-blatt="zurueck"]::view-transition-new(root) { animation: blatt-ein-links var(--dur-blatt) var(--ease-glide) calc(var(--dur-blatt) * .2) both; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .app-dock .pillbar .pill-glow, .app-dock .pillbar .lbl, .app-dock .pillbar button { transition: none; }
+      ::view-transition-group(kopf) { animation-duration: 140ms; }
+    }
+
     /* Knöpfe: Pillen mit feinem Rand (federn per porto-formen.css) */
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -683,10 +725,11 @@
 
   <!-- Schwebende Leiste unten (Porto .dock): Bereiche und rechts der runde Plus-Knopf -->
   <nav class="dock app-dock" aria-label="Bereiche">
-    <div class="pillbar" id="pillbar">
+    <div class="pillbar still" id="pillbar">
+      <span class="pill-glow" aria-hidden="true"></span>
       <button type="button" data-go="regal" aria-pressed="true"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M9.5 4v16M14 5.5l4.5 14"/><path d="M3 20h18"/></svg><span class="lbl">Regal</span></button>
-      <button type="button" data-go="album" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5a1.5 1.5 0 0 1 1.5-1.5H10l2 2.5h6.5A1.5 1.5 0 0 1 20 10v7.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/></svg><span class="lbl vh">Album</span></button>
-      <button type="button" data-go="zahlen" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M10 20V5M15 20v-7M20 20V8"/></svg><span class="lbl vh">Zahlen</span></button>
+      <button type="button" data-go="album" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5a1.5 1.5 0 0 1 1.5-1.5H10l2 2.5h6.5A1.5 1.5 0 0 1 20 10v7.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/></svg><span class="lbl off">Album</span></button>
+      <button type="button" data-go="zahlen" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M10 20V5M15 20v-7M20 20V8"/></svg><span class="lbl off">Zahlen</span></button>
     </div>
     <button class="fab" id="addBtn" type="button" aria-label="Buch hinzufügen" title="Buch hinzufügen"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
   </nav>
