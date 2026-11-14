@@ -1460,6 +1460,64 @@ function paintRatingLabel() {
     ? 'Bewertung nach dem Lesen' : 'Priorität';
 }
 
+/* ---------- Status als Chips (das versteckte select #fStatus bleibt die Quelle) ---------- */
+
+const STATUS_CHIP_LABELS = { backlog: 'Wunschliste' }; // kurze Beschriftung, passt auf das Handy
+const statusChips = $('statusChips');
+for (const [key, label] of Object.entries(STATUSES)) {
+  const btn = el('button', 'chip', STATUS_CHIP_LABELS[key] || label);
+  btn.type = 'button';
+  btn.dataset.status = key;
+  statusChips.appendChild(btn);
+}
+statusChips.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn || els.status.value === btn.dataset.status) return;
+  els.status.value = btn.dataset.status;
+  els.status.dispatchEvent(new Event('change'));
+});
+
+function paintStatusChips() {
+  statusChips.querySelectorAll('button').forEach((btn) => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.status === els.status.value));
+  });
+}
+
+/** Datumsfelder nur, wenn sie zum Status passen (oder schon etwas eingetragen ist). */
+function paintDates() {
+  const status = els.status.value;
+  const showStart = ['reading', 'read', 'dropped'].includes(status) || Boolean(els.startDate.value);
+  const showEnd = ['read', 'dropped'].includes(status) || Boolean(els.endDate.value);
+  $('startDateField').hidden = !showStart;
+  $('endDateField').hidden = !showEnd;
+  $('datesRow').hidden = !showStart && !showEnd;
+}
+
+/* ---------- Oberstes Feld: ISBN oder Titel ---------- */
+
+/** Sieht der Text wie eine ISBN aus (nur Ziffern, X, Bindestriche, Leerzeichen)? Leer zählt als ISBN. */
+function looksLikeIsbn(text) {
+  return /^[\d\s\-xX]*$/.test(text.trim());
+}
+
+/** Ein Titel im oberen Feld wandert ins Titelfeld, solange das leer ist. Gibt den Text zurück. */
+function takeTitleFromSearch() {
+  const text = els.isbn.value.trim();
+  if (!text || looksLikeIsbn(text)) return '';
+  if (!els.title.value.trim()) {
+    els.title.value = text;
+    els.isbn.value = '';
+    els.isbnHint.textContent = '';
+  }
+  return text;
+}
+
+/** Öffnet einen Abschnitt im Formular samt "Mehr Angaben" drumherum. */
+function openSection(id) {
+  $(id).open = true;
+  $('secMore').open = true;
+}
+
 /** Zeigt je nach Besitzformat die passenden Ausgabe-Abschnitte. */
 function paintOwnership() {
   const ownership = els.ownership.value;
@@ -1514,6 +1572,9 @@ function openDialog(book = null) {
     $(`c-${key}`).value = v ? String(v) : '';
   }
   $('secCriteria').open = Boolean(entry && Object.values(readCriteria()).some((v) => v != null));
+  // "Mehr Angaben" offen, wenn darin beim Bearbeiten etwas ausgefüllt ist
+  $('secMore').open = Boolean(entry && (entry.notes || entry.tags.length)) ||
+    ['secCriteria', 'secWork', 'secPrint', 'secEbook', 'secSpecial'].some((id) => $(id).open);
 
   formRating = book ? book.rating : 0;
   formProvenance = {};
@@ -1528,6 +1589,8 @@ function openDialog(book = null) {
   paintRatingLabel();
   paintScorePreview();
   paintOwnership();
+  paintStatusChips();
+  paintDates();
   els.dialog.showModal();
   els.dialog.scrollTop = 0;
   // Auf dem Handy nur bei neuen Büchern direkt die Tastatur öffnen
@@ -1542,6 +1605,12 @@ function closeDialog() {
 /** Prüft das Formular und speichert das Buch. */
 function submitForm(event) {
   event.preventDefault();
+  if (takeTitleFromSearch() && els.isbn.value.trim()) {
+    // Oben steht ein Text, der keine ISBN ist, und der Titel ist schon ausgefüllt
+    els.error.textContent = 'Oben steht keine gültige ISBN. Zum Suchen nach Titel „Suchen“ tippen, sonst das Feld leeren.';
+    els.isbn.focus();
+    return;
+  }
   const data = readForm();
 
   if (!data.isbn.valid) {
@@ -1551,7 +1620,7 @@ function submitForm(event) {
   }
   if (data.ownership === 'both' && !data.ebookIsbn.valid) {
     els.error.textContent = 'E-Book: ' + data.ebookIsbn.error;
-    $('secEbook').open = true;
+    openSection('secEbook');
     $('e-isbn').focus();
     return;
   }
@@ -1740,8 +1809,10 @@ function setFormValue(scope, field, value) {
 
 /** Startet die Suche mit den Angaben aus dem Formular und öffnet den Vorschlags-Dialog. */
 async function startEnrichment() {
+  const query = takeTitleFromSearch(); // Titel oben: danach suchen
   const cur = formCurrent();
-  const isbn = Isbn.parse(els.isbn.value);
+  if (query) cur.work.title = query;
+  const isbn = Isbn.parse(query ? '' : els.isbn.value);
   if (!isbn.valid) {
     els.error.textContent = isbn.error;
     els.isbn.focus();
@@ -1762,7 +1833,7 @@ async function startEnrichment() {
     kinds: special.kinds,
   };
   if (!input.isbn && !input.title && !input.author) {
-    els.error.textContent = 'Für die Suche bitte eine ISBN oder Titel und Autor:in eintragen.';
+    els.error.textContent = 'Für die Suche bitte oben eine ISBN oder einen Titel eintragen.';
     els.isbn.focus();
     return;
   }
@@ -2006,7 +2077,7 @@ async function applyEnrichment(all) {
   const wantCover = coverCb && (coverCb.checked || all);
   const edition = enrichEdition;
   els.enrichDialog.close();
-  for (const id of sections) $(id).open = true;
+  for (const id of sections) openSection(id);
   els.formNote.textContent = count
     ? `${count} Angabe${count === 1 ? '' : 'n'} übernommen. Bitte prüfen und speichern.`
     : 'Keine Angaben übernommen.';
@@ -2066,9 +2137,18 @@ els.status.addEventListener('change', () => {
   // Datum vorbelegen (überschreibbar): Beginn bei "Lese gerade", Ende bei "Gelesen"
   if (els.status.value === 'reading' && !els.startDate.value) els.startDate.value = Progress.today();
   if (els.status.value === 'read' && !els.endDate.value) els.endDate.value = Progress.today();
+  paintStatusChips();
+  paintDates();
 });
 els.ownership.addEventListener('change', paintOwnership);
-els.isbn.addEventListener('blur', () => showIsbnHint(els.isbn, els.isbnHint));
+els.isbn.addEventListener('blur', () => {
+  if (looksLikeIsbn(els.isbn.value)) showIsbnHint(els.isbn, els.isbnHint);
+  else els.isbnHint.textContent = '';
+});
+// Eingabetaste im oberen Feld sucht, statt das Formular abzuschicken
+els.isbn.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); startEnrichment(); }
+});
 els.toastUndo.addEventListener('click', undoDelete);
 
 // Klick auf den abgedunkelten Hintergrund schließt den Dialog
