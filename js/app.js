@@ -1592,6 +1592,7 @@ function openDialog(book = null) {
   paintStatusChips();
   paintDates();
   els.dialog.showModal();
+  growNotes();
   els.dialog.scrollTop = 0;
   // Auf dem Handy nur bei neuen Büchern direkt die Tastatur öffnen
   if (!book) els.isbn.focus();
@@ -2130,6 +2131,15 @@ function hideToast() {
 
 $('addBtn').addEventListener('click', () => openDialog());
 $('cancelBtn').addEventListener('click', closeDialog);
+$('closeBookBtn').addEventListener('click', closeDialog);
+
+/** Notizfeld wächst mit dem Text (startet einzeilig). */
+function growNotes() {
+  els.notes.style.height = 'auto';
+  if (els.notes.scrollHeight) els.notes.style.height = els.notes.scrollHeight + 2 + 'px';
+}
+els.notes.addEventListener('input', growNotes);
+$('secMore').addEventListener('toggle', growNotes);
 els.form.addEventListener('submit', submitForm);
 els.status.addEventListener('change', () => {
   paintRatingLabel();

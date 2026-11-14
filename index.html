@@ -449,6 +449,24 @@
     }
     .error { color: var(--err); font-size: 0.85rem; min-height: 1em; }
 
+    /* Buch-Dialog: Kopf mit Schließen-Kreuz, Knopfleiste klebt unten (Speichern immer erreichbar) */
+    .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
+    .dialog-head h2 { margin: 0; font-size: 1.45rem; }
+    .dialog-head .iconbtn { margin: -6px -10px -6px 0; }
+    #bookForm > .dialog-actions {
+      position: sticky; bottom: 0; z-index: 1;
+      background: var(--bg);
+      margin-bottom: calc(-16px - env(safe-area-inset-bottom));
+      padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    }
+    /* Leere Hinweis- und Fehlerzeilen nehmen keinen Platz ein */
+    #bookForm .field-hint:empty, #bookForm .error:empty { display: none; }
+    /* Notizen starten einzeilig und wachsen beim Tippen (js/app.js: growNotes) */
+    #fNotes { min-height: 46px; resize: none; overflow: hidden; }
+    /* Leere Sterne im Dunkelmodus kräftiger, damit man sieht, wo man tippen kann */
+    [data-theme="dark"] .star-input button:not(.on) { color: var(--faint); }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .star-input button:not(.on) { color: var(--faint); } }
+
     /* Kurze Bestätigungsmeldung unten (z. B. "Buch gelöscht – Rückgängig") */
     .toast {
       position: fixed;
@@ -678,7 +696,10 @@
        aus den Feldlisten in js/app.js erzeugt. -->
   <dialog id="bookDialog" aria-labelledby="dialogTitle">
     <form class="dialog-form" id="bookForm" method="dialog" novalidate>
-      <h2 id="dialogTitle">Buch hinzufügen</h2>
+      <div class="dialog-head">
+        <h2 id="dialogTitle">Buch hinzufügen</h2>
+        <button type="button" class="iconbtn" id="closeBookBtn" aria-label="Schließen"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
 
       <div class="field">
         <label for="fIsbn">ISBN oder Titel</label>
