@@ -358,6 +358,12 @@
     @media (hover: hover) { details.section > summary:hover { background: var(--sunken); } }
     details.section > .section-body { padding: 4px 4px 8px; color: inherit; }
     .checks-label { font-size: 12px; color: var(--muted); }
+    /* Status-Chips im Formular: umbrechen statt wischen, damit alle fünf sichtbar sind */
+    .status-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    /* "Mehr Angaben": ein Klappbereich für alles, was man beim Erfassen selten braucht */
+    .dialog-form details.more > summary { color: var(--ink); }
+    .dialog-form details.more > .more-body { padding: 8px 0 0; }
+    .dialog-form details.more > .more-body > .field-row:first-child { margin-top: 4px; }
     .checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
     /* Häkchen als Stempel (.check aus components.css + porto-formen.css) */
     .checks { display: grid; gap: 0; }
@@ -442,6 +448,24 @@
       margin-top: 12px; padding-top: 14px; border-top: 1px solid var(--line);
     }
     .error { color: var(--err); font-size: 0.85rem; min-height: 1em; }
+
+    /* Buch-Dialog: Kopf mit Schließen-Kreuz, Knopfleiste klebt unten (Speichern immer erreichbar) */
+    .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
+    .dialog-head h2 { margin: 0; font-size: 1.45rem; }
+    .dialog-head .iconbtn { margin: -6px -10px -6px 0; }
+    #bookForm > .dialog-actions {
+      position: sticky; bottom: 0; z-index: 1;
+      background: var(--bg);
+      margin-bottom: calc(-16px - env(safe-area-inset-bottom));
+      padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    }
+    /* Leere Hinweis- und Fehlerzeilen nehmen keinen Platz ein */
+    #bookForm .field-hint:empty, #bookForm .error:empty { display: none; }
+    /* Notizen starten einzeilig und wachsen beim Tippen (js/app.js: growNotes) */
+    #fNotes { min-height: 46px; resize: none; overflow: hidden; }
+    /* Leere Sterne im Dunkelmodus kräftiger, damit man sieht, wo man tippen kann */
+    [data-theme="dark"] .star-input button:not(.on) { color: var(--faint); }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .star-input button:not(.on) { color: var(--faint); } }
 
     /* Kurze Bestätigungsmeldung unten (z. B. "Buch gelöscht – Rückgängig") */
     .toast {
@@ -672,13 +696,16 @@
        aus den Feldlisten in js/app.js erzeugt. -->
   <dialog id="bookDialog" aria-labelledby="dialogTitle">
     <form class="dialog-form" id="bookForm" method="dialog" novalidate>
-      <h2 id="dialogTitle">Buch hinzufügen</h2>
+      <div class="dialog-head">
+        <h2 id="dialogTitle">Buch hinzufügen</h2>
+        <button type="button" class="iconbtn" id="closeBookBtn" aria-label="Schließen"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
 
       <div class="field">
-        <label for="fIsbn">ISBN <span class="hint-inline">(vom Einband oder Impressum)</span></label>
+        <label for="fIsbn">ISBN oder Titel</label>
         <div class="input-with-btn">
-          <input id="fIsbn" type="text" inputmode="numeric" autocomplete="off" placeholder="z. B. 978-3-…">
-          <button type="button" class="btn" id="enrichBtn" title="Fehlende Angaben online suchen">Metadaten suchen</button>
+          <input id="fIsbn" type="search" enterkeyhint="search" autocomplete="off" placeholder="z. B. 978-3-… oder Winnetou">
+          <button type="button" class="btn" id="enrichBtn" title="Angaben online suchen">Suchen</button>
         </div>
         <p class="field-hint" id="fIsbnHint"></p>
       </div>
@@ -689,8 +716,52 @@
       </div>
 
       <div class="field">
-        <label for="fAuthor">Autor:in <span class="hint-inline">(mehrere mit ; trennen)</span></label>
-        <input id="fAuthor" name="author" type="text" autocomplete="off">
+        <label for="fAuthor">Autor:in</label>
+        <input id="fAuthor" name="author" type="text" autocomplete="off" placeholder="mehrere mit ; trennen">
+      </div>
+
+      <!-- Status als Chips; das versteckte select bleibt die Quelle für die Logik -->
+      <fieldset class="field">
+        <legend>Status</legend>
+        <div class="status-chips" id="statusChips"></div>
+        <select id="fStatus" name="status" hidden></select>
+      </fieldset>
+
+      <fieldset class="field">
+        <legend id="ratingLabel">Priorität</legend>
+        <div class="star-input" id="starInput"></div>
+      </fieldset>
+
+      <!-- Datumsfelder je nach Status (siehe paintDates in js/app.js) -->
+      <div class="field-row" id="datesRow">
+        <div class="field" id="startDateField">
+          <label for="fStartDate">Begonnen am</label>
+          <input id="fStartDate" type="date">
+        </div>
+        <div class="field" id="endDateField">
+          <label for="fEndDate">Beendet am</label>
+          <input id="fEndDate" type="date">
+        </div>
+      </div>
+
+      <!-- Alles Weitere eingeklappt, damit ein neues Buch auf einen Bildschirm passt -->
+      <details class="section more" id="secMore">
+        <summary>Mehr Angaben <span class="hint-inline">Besitz, Cover, Notizen, Tags, Werk, Ausgabe …</span></summary>
+        <div class="section-body more-body">
+
+      <div class="field-row">
+        <div class="field">
+          <label for="fOwnership">Besitze ich als</label>
+          <select id="fOwnership" name="ownership"></select>
+        </div>
+        <div class="field" id="currentFormatField" hidden>
+          <label for="fCurrentFormat">Ich lese gerade als</label>
+          <select id="fCurrentFormat">
+            <option value="">–</option>
+            <option value="print">Print</option>
+            <option value="ebook">E-Book</option>
+          </select>
+        </div>
       </div>
 
       <div class="cover-row">
@@ -703,57 +774,20 @@
         </div>
       </div>
 
-      <div class="field-row">
-        <div class="field">
-          <label for="fStatus">Status</label>
-          <select id="fStatus" name="status"></select>
-        </div>
-        <div class="field">
-          <label for="fOwnership">Besitze ich als</label>
-          <select id="fOwnership" name="ownership"></select>
-        </div>
+      <div class="field">
+        <label for="fNotes">Notizen</label>
+        <textarea id="fNotes" name="notes" rows="1" placeholder="Gedanken, Zitate, Empfehlung von …"></textarea>
       </div>
 
-      <div class="field" id="currentFormatField" hidden>
-        <label for="fCurrentFormat">Ich lese gerade als</label>
-        <select id="fCurrentFormat">
-          <option value="">–</option>
-          <option value="print">Print</option>
-          <option value="ebook">E-Book</option>
-        </select>
-      </div>
-
-      <fieldset class="field">
-        <legend id="ratingLabel">Priorität</legend>
-        <div class="star-input" id="starInput"></div>
-      </fieldset>
-
-      <div class="field-row" id="datesRow">
-        <div class="field">
-          <label for="fStartDate">Begonnen am</label>
-          <input id="fStartDate" type="date">
-        </div>
-        <div class="field">
-          <label for="fEndDate">Beendet am</label>
-          <input id="fEndDate" type="date">
-        </div>
+      <div class="field">
+        <label for="fTags">Tags</label>
+        <input id="fTags" type="text" autocomplete="off" placeholder="mit Komma trennen, z. B. Urlaub, Lesekreis">
       </div>
 
       <details class="section" id="secCriteria">
         <summary>Leseinteresse im Detail <span class="hint-inline" id="scorePreview"></span></summary>
         <div class="section-body criteria" id="criteriaFields"></div>
       </details>
-
-      <div class="field">
-        <label for="fNotes">Notizen</label>
-        <textarea id="fNotes" name="notes" placeholder="Gedanken, Zitate, Empfehlung von …"></textarea>
-      </div>
-
-      <div class="field">
-        <label for="fTags">Tags <span class="hint-inline">(mit Komma trennen)</span></label>
-        <input id="fTags" type="text" autocomplete="off" placeholder="z. B. Urlaub, Lesekreis">
-      </div>
-
       <details class="section" id="secWork">
         <summary>Werk <span class="hint-inline">Untertitel, Original, Reihe, Genres …</span></summary>
         <div class="section-body" id="workFields"></div>
@@ -774,6 +808,9 @@
       <details class="section" id="secSources" hidden>
         <summary>Herkunft der Angaben</summary>
         <ul class="section-body provenance" id="provenanceList"></ul>
+      </details>
+
+        </div>
       </details>
 
       <p class="field-hint" id="formNote" role="status"></p>
